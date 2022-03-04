@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -180,6 +181,7 @@ func (mr *MilvusRoles) runQueryCoord(ctx context.Context, localMsg bool) *compon
 	}()
 	wg.Wait()
 
+	initPprofMonitor(7764)
 	metrics.RegisterQueryCoord()
 	return qs
 }
@@ -212,6 +214,7 @@ func (mr *MilvusRoles) runQueryNode(ctx context.Context, localMsg bool, alias st
 	}()
 	wg.Wait()
 
+	initPprofMonitor(7763)
 	metrics.RegisterQueryNode()
 	return qn
 }
@@ -340,6 +343,17 @@ func (mr *MilvusRoles) runIndexNode(ctx context.Context, localMsg bool, alias st
 
 	metrics.RegisterIndexNode()
 	return in
+}
+
+func initPprofMonitor(port int) {
+	addr := ":" + strconv.Itoa(port)
+
+	go func() {
+		err := http.ListenAndServe(addr, nil)
+		if err != nil {
+			panic(err)
+		}
+	}()
 }
 
 // Run Milvus components.
