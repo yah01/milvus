@@ -173,14 +173,15 @@ func validateVectorFieldMetricType(field *schemapb.FieldSchema) error {
 }
 
 func validateDuplicatedFieldName(fields []*schemapb.FieldSchema) error {
-	names := make(map[string]bool)
+	names := make(map[string]bool, len(fields))
 	for _, field := range fields {
-		_, ok := names[field.Name]
-		if ok {
+		exist := names[field.Name]
+		if exist {
 			return errors.New("duplicated field name")
 		}
 		names[field.Name] = true
 	}
+
 	return nil
 }
 
@@ -205,12 +206,14 @@ func ValidateFieldAutoID(coll *schemapb.CollectionSchema) error {
 			if idx != -1 {
 				return fmt.Errorf("only one field can speficy AutoID with true, field name = %s, %s", coll.Fields[idx].Name, field.Name)
 			}
-			idx = i
 			if !field.IsPrimaryKey {
 				return fmt.Errorf("only primary field can speficy AutoID with true, field name = %s", field.Name)
 			}
+
+			idx = i
 		}
 	}
+
 	return nil
 }
 

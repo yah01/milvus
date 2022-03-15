@@ -1285,8 +1285,10 @@ func (c *Core) CreateCollection(ctx context.Context, in *milvuspb.CreateCollecti
 
 	tr := timerecord.NewTimeRecorder("CreateCollection")
 
-	log.Debug("CreateCollection", zap.String("role", typeutil.RootCoordRole),
-		zap.String("collection name", in.CollectionName), zap.Int64("msgID", in.Base.MsgID))
+	log.Debug("CreateCollection",
+		zap.String("role", typeutil.RootCoordRole),
+		zap.String("collection name", in.CollectionName),
+		zap.Int64("msgID", in.Base.MsgID))
 	t := &CreateCollectionReqTask{
 		baseReqTask: baseReqTask{
 			ctx:  ctx,
@@ -1296,12 +1298,18 @@ func (c *Core) CreateCollection(ctx context.Context, in *milvuspb.CreateCollecti
 	}
 	err := executeTask(t)
 	if err != nil {
-		log.Error("CreateCollection failed", zap.String("role", typeutil.RootCoordRole),
-			zap.String("collection name", in.CollectionName), zap.Int64("msgID", in.Base.MsgID), zap.Error(err))
+		log.Error("CreateCollection failed",
+			zap.String("role", typeutil.RootCoordRole),
+			zap.String("collection name", in.CollectionName),
+			zap.Int64("msgID", in.Base.MsgID),
+			zap.Error(err))
+
 		return failStatus(commonpb.ErrorCode_UnexpectedError, "CreateCollection failed: "+err.Error()), nil
 	}
-	log.Debug("CreateCollection success", zap.String("role", typeutil.RootCoordRole),
-		zap.String("collection name", in.CollectionName), zap.Int64("msgID", in.Base.MsgID))
+	log.Debug("CreateCollection success",
+		zap.String("role", typeutil.RootCoordRole),
+		zap.String("collection name", in.CollectionName),
+		zap.Int64("msgID", in.Base.MsgID))
 
 	metrics.RootCoordCreateCollectionCounter.WithLabelValues(metrics.SuccessLabel).Inc()
 	metrics.RootCoordDDLWriteTypeLatency.WithLabelValues("CreateCollection", in.CollectionName).Observe(float64(tr.ElapseSpan().Milliseconds()))
@@ -1615,9 +1623,12 @@ func (c *Core) CreateIndex(ctx context.Context, in *milvuspb.CreateIndexRequest)
 		return failStatus(commonpb.ErrorCode_UnexpectedError, "StateCode="+internalpb.StateCode_name[int32(code)]), nil
 	}
 	tr := timerecord.NewTimeRecorder("CreateIndex")
-	log.Debug("CreateIndex", zap.String("role", typeutil.RootCoordRole),
-		zap.String("collection name", in.CollectionName), zap.String("field name", in.FieldName),
+	log.Debug("CreateIndex",
+		zap.String("role", typeutil.RootCoordRole),
+		zap.String("collection name", in.CollectionName),
+		zap.String("field name", in.FieldName),
 		zap.Int64("msgID", in.Base.MsgID))
+		
 	t := &CreateIndexReqTask{
 		baseReqTask: baseReqTask{
 			ctx:  ctx,
@@ -1627,13 +1638,18 @@ func (c *Core) CreateIndex(ctx context.Context, in *milvuspb.CreateIndexRequest)
 	}
 	err := executeTask(t)
 	if err != nil {
-		log.Error("CreateIndex failed", zap.String("role", typeutil.RootCoordRole),
-			zap.String("collection name", in.CollectionName), zap.String("field name", in.FieldName),
-			zap.Int64("msgID", in.Base.MsgID), zap.Error(err))
+		log.Error("CreateIndex failed",
+			zap.String("role", typeutil.RootCoordRole),
+			zap.String("collection name", in.CollectionName),
+			zap.String("field name", in.FieldName),
+			zap.Int64("msgID", in.Base.MsgID),
+			zap.Error(err))
 		return failStatus(commonpb.ErrorCode_UnexpectedError, "CreateIndex failed: "+err.Error()), nil
 	}
-	log.Debug("CreateIndex success", zap.String("role", typeutil.RootCoordRole),
-		zap.String("collection name", in.CollectionName), zap.String("field name", in.FieldName),
+	log.Debug("CreateIndex success",
+		zap.String("role", typeutil.RootCoordRole),
+		zap.String("collection name", in.CollectionName),
+		zap.String("field name", in.FieldName),
 		zap.Int64("msgID", in.Base.MsgID))
 
 	metrics.RootCoordCreateIndexCounter.WithLabelValues(metrics.SuccessLabel).Inc()

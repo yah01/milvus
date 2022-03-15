@@ -938,41 +938,20 @@ func (cct *createCollectionTask) PreExecute(ctx context.Context) error {
 		return err
 	}
 
-	for _, field := range cct.schema.Fields {
-		// validate field name
-		if err := validateFieldName(field.Name); err != nil {
+	dims, types, err := funcutil.GetDimensions(cct.schema.Fields)
+	if err != nil {
+		return err
+	}
+
+	// validate dimensions
+	for i, dim := range dims {
+		isBinaryVecField := types[i] == schemapb.DataType_BinaryVector
+		if err := validateDimension(dim, isBinaryVecField); err != nil {
 			return err
-		}
-		// validate vector field type parameters
-		if field.DataType == schemapb.DataType_FloatVector || field.DataType == schemapb.DataType_BinaryVector {
-			exist := false
-			var dim int64
-			for _, param := range field.TypeParams {
-				if param.Key == "dim" {
-					exist = true
-					tmp, err := strconv.ParseInt(param.Value, 10, 64)
-					if err != nil {
-						return err
-					}
-					dim = tmp
-					break
-				}
-			}
-			if !exist {
-				return errors.New("dimension is not defined in field type params, check type param `dim` for vector field")
-			}
-			if field.DataType == schemapb.DataType_FloatVector {
-				if err := validateDimension(dim, false); err != nil {
-					return err
-				}
-			} else {
-				if err := validateDimension(dim, true); err != nil {
-					return err
-				}
-			}
 		}
 	}
 
+	// TODO: remove this after supporting multiple vector fields
 	if err := validateMultipleVectorFields(cct.schema); err != nil {
 		return err
 	}

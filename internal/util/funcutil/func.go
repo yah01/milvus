@@ -235,3 +235,41 @@ func GetAvailablePort() int {
 
 	return listener.Addr().(*net.TCPAddr).Port
 }
+
+// Get the dimensions from fields
+func GetDimensions(fields []*schemapb.FieldSchema) ([]int64, []schemapb.DataType, error) {
+	dims := make([]int64, 0)
+	types := make([]schemapb.DataType, 0)
+
+	for _, field := range fields {
+		if field.DataType == schemapb.DataType_FloatVector || field.DataType == schemapb.DataType_BinaryVector {
+			dim, err := GetDimension(field.TypeParams)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			dims = append(dims, dim)
+			types = append(types, field.DataType)
+
+		}
+	}
+
+	return dims, types, nil
+}
+
+// Get dimension from the params table of vector field
+// Return error if key `dim` not found
+func GetDimension(params []*commonpb.KeyValuePair) (int64, error) {
+	for _, param := range params {
+		if param.Key == "dim" {
+			dim, err := strconv.ParseInt(param.Value, 10, 64)
+			if err != nil {
+				return 0, err
+			}
+
+			return dim, nil
+		}
+	}
+
+	return 0, errors.New("dimension is not defined in field type params, check type param `dim` for vector field")
+}

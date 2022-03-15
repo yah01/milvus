@@ -92,6 +92,7 @@ func (t *CreateCollectionReqTask) Execute(ctx context.Context) error {
 	if t.Type() != commonpb.MsgType_CreateCollection {
 		return fmt.Errorf("create collection, msg type = %s", commonpb.MsgType_name[int32(t.Type())])
 	}
+
 	var schema schemapb.CollectionSchema
 	err := proto.Unmarshal(t.Req.Schema, &schema)
 	if err != nil {
@@ -104,7 +105,8 @@ func (t *CreateCollectionReqTask) Execute(ctx context.Context) error {
 	if t.Req.ShardsNum <= 0 {
 		t.Req.ShardsNum = common.DefaultShardsNum
 	}
-	log.Debug("CreateCollectionReqTask Execute", zap.Any("CollectionName", t.Req.CollectionName),
+	log.Debug("CreateCollectionReqTask Execute",
+		zap.Any("CollectionName", t.Req.CollectionName),
 		zap.Int32("ShardsNum", t.Req.ShardsNum),
 		zap.String("ConsistencyLevel", t.Req.ConsistencyLevel.String()))
 
@@ -846,10 +848,13 @@ func (t *CreateIndexReqTask) Execute(ctx context.Context) error {
 	}
 	indexName := Params.CommonCfg.DefaultIndexName //TODO, get name from request
 	indexID, _, err := t.core.IDAllocator(1)
-	log.Debug("RootCoord CreateIndexReqTask", zap.Any("indexID", indexID), zap.Error(err))
+	log.Debug("RootCoord CreateIndexReqTask",
+		zap.Any("indexID", indexID),
+		zap.Error(err))
 	if err != nil {
 		return err
 	}
+	
 	idxInfo := &etcdpb.IndexInfo{
 		IndexName:   indexName,
 		IndexID:     indexID,
