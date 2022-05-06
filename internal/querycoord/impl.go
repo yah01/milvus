@@ -297,14 +297,25 @@ func (qc *QueryCoord) ReleaseCollection(ctx context.Context, req *querypb.Releas
 	}
 
 	// if collection has not been loaded into memory, return release collection successfully
-	hasCollection := qc.meta.hasCollection(collectionID)
-	if !hasCollection {
+	collection, err := qc.meta.getCollectionInfoByID(collectionID)
+	if err != nil {
 		log.Info("release collection end, the collection has not been loaded into QueryNode",
 			zap.String("role", typeutil.QueryCoordRole),
 			zap.Int64("collectionID", collectionID),
 			zap.Int64("msgID", req.Base.MsgID))
 
 		metrics.QueryCoordReleaseCount.WithLabelValues(metrics.SuccessLabel).Inc()
+		return status, nil
+	}
+
+	if collection.InMemoryPercentage < 100 {
+		log.Error("release a loading collection, which is not allowed",
+			zap.Int64("collectionID", collectionID))
+
+		status.ErrorCode = commonpb.ErrorCode_MetaFailed
+		status.Reason = "the collection has not been loaded fully, try to release it later"
+
+		metrics.QueryCoordReleaseCount.WithLabelValues(metrics.FailLabel).Inc()
 		return status, nil
 	}
 
@@ -316,7 +327,7 @@ func (qc *QueryCoord) ReleaseCollection(ctx context.Context, req *querypb.Releas
 		meta:                     qc.meta,
 		broker:                   qc.broker,
 	}
-	err := qc.scheduler.Enqueue(releaseCollectionTask)
+	err = qc.scheduler.Enqueue(releaseCollectionTask)
 	if err != nil {
 		log.Error("releaseCollectionRequest failed to add execute task to scheduler",
 			zap.String("role", typeutil.QueryCoordRole),
