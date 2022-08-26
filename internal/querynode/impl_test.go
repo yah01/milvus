@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
+	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
@@ -99,6 +100,12 @@ func TestImpl_WatchDmChannels(t *testing.T) {
 		CollectionID: defaultCollectionID,
 		PartitionIDs: []UniqueID{defaultPartitionID},
 		Schema:       schema,
+		Infos: []*datapb.VchannelInfo{
+			{
+				CollectionID: 1000,
+				ChannelName:  "1000-dmc0",
+			},
+		},
 	}
 
 	status, err := node.WatchDmChannels(ctx, req)

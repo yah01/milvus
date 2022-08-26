@@ -16,39 +16,40 @@
 
 package funcutil
 
-import "reflect"
+import (
+	"reflect"
+
+	"github.com/milvus-io/milvus/internal/util/typeutil"
+)
 
 // SliceContain returns true if slice s contains item.
-func SliceContain(s, item interface{}) bool {
-	ss := reflect.ValueOf(s)
-	if ss.Kind() != reflect.Slice {
-		panic("SliceContain expect a slice")
-	}
-
-	for i := 0; i < ss.Len(); i++ {
-		if ss.Index(i).Interface() == item {
+func SliceContain[T comparable, S ~[]T](slice S, item T) bool {
+	for i := range slice {
+		if slice[i] == item {
 			return true
 		}
 	}
+	return false
+}
 
+// MapSliceContain returns true if slice s contains item.
+func MapSliceContain[T comparable, S ~[]T, R comparable](slice S, item R, fn func(item T) R) bool {
+	for i := range slice {
+		if fn(slice[i]) == item {
+			return true
+		}
+	}
 	return false
 }
 
 // SliceSetEqual is used to compare two Slice
-func SliceSetEqual(s1, s2 interface{}) bool {
-	ss1 := reflect.ValueOf(s1)
-	ss2 := reflect.ValueOf(s2)
-	if ss1.Kind() != reflect.Slice {
-		panic("expect a slice")
-	}
-	if ss2.Kind() != reflect.Slice {
-		panic("expect a slice")
-	}
-	if ss1.Len() != ss2.Len() {
+func SliceSetEqual[T comparable, S ~[]T](s1, s2 S) bool {
+	if len(s1) != len(s2) {
 		return false
 	}
-	for i := 0; i < ss1.Len(); i++ {
-		if !SliceContain(s2, ss1.Index(i).Interface()) {
+	set := typeutil.NewSet(s1...)
+	for i := range s2 {
+		if !set.Contain(s2[i]) {
 			return false
 		}
 	}
@@ -74,4 +75,8 @@ func SortedSliceEqual(s1, s2 interface{}) bool {
 		}
 	}
 	return true
+}
+
+func MakeSlice[T any](elements ...T) []T {
+	return elements
 }

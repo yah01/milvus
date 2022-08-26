@@ -50,6 +50,7 @@ func TestShardClusterService_HandoffSegments(t *testing.T) {
 	assert.NotPanics(t, func() {
 		clusterService.HandoffSegments(defaultCollectionID, &querypb.SegmentChangeInfo{})
 	})
+	clusterService.releaseShardCluster(defaultDMLChannel)
 }
 
 func TestShardClusterService_SyncReplicaSegments(t *testing.T) {
