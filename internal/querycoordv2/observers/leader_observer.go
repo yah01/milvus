@@ -68,6 +68,9 @@ func (o *LeaderObserver) observeCollection(ctx context.Context, collection int64
 		leaders := o.dist.ChannelDistManager.GetShardLeadersByReplica(replica)
 		for ch, leaderID := range leaders {
 			leaderView := o.dist.LeaderViewManager.GetLeaderShardView(leaderID, ch)
+			if leaderView == nil {
+				continue
+			}
 			dists := o.dist.SegmentDistManager.GetByShard(ch)
 			needLoaded, needRemoved := o.findNeedLoadedSegments(leaderView, dists),
 				o.findNeedRemovedSegments(leaderView, dists)
