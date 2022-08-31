@@ -1,16 +1,17 @@
 package utils
 
-import "github.com/milvus-io/milvus/internal/querycoordv2/meta"
+import (
+	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
+	"github.com/milvus-io/milvus/internal/util/typeutil"
+)
 
 func FilterReleased[E interface{ GetCollectionID() int64 }](elems []E, collections []int64) []E {
-	collMap := make(map[int64]struct{})
-	for _, cid := range collections {
-		collMap[cid] = struct{}{}
-	}
+	collectionSet := typeutil.NewUniqueSet(collections...)
 	ret := make([]E, 0, len(elems))
-	for _, s := range elems {
-		if _, ok := collMap[s.GetCollectionID()]; !ok {
-			ret = append(ret, s)
+	for i := range elems {
+		collection := elems[i].GetCollectionID()
+		if !collectionSet.Contain(collection) {
+			ret = append(ret, elems[i])
 		}
 	}
 	return ret

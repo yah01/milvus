@@ -18,32 +18,20 @@ package funcutil
 
 import (
 	"reflect"
-
-	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
 // SliceContain returns true if slice s contains item.
-func SliceContain[T comparable, S ~[]T](slice S, item T) bool {
-	for i := range slice {
-		if slice[i] == item {
+func SliceContain(s, item interface{}) bool {
+	ss := reflect.ValueOf(s)
+	if ss.Kind() != reflect.Slice {
+		panic("SliceContain expect a slice")
+	}
+	for i := 0; i < ss.Len(); i++ {
+		if ss.Index(i).Interface() == item {
 			return true
 		}
 	}
 	return false
-}
-
-// SliceSetEqual is used to compare two Slice
-func SliceSetEqual[T comparable, S ~[]T](s1, s2 S) bool {
-	if len(s1) != len(s2) {
-		return false
-	}
-	set := typeutil.NewSet(s1...)
-	for i := range s2 {
-		if !set.Contain(s2[i]) {
-			return false
-		}
-	}
-	return true
 }
 
 // SortedSliceEqual is used to compare two Sorted Slice

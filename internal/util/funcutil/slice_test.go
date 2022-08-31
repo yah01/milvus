@@ -56,40 +56,6 @@ func Test_SliceContain(t *testing.T) {
 	}
 }
 
-func Test_SliceSetEqual(t *testing.T) {
-	cases := []struct {
-		s1   any
-		s2   any
-		want bool
-	}{
-		{[]int{}, []int{}, true},
-		{[]string{}, []string{}, true},
-		{[]int{1, 2, 3}, []int{3, 2, 1}, true},
-		{[]int{1, 2, 3}, []int{1, 2, 3}, true},
-		{[]int{1, 2, 3}, []int{}, false},
-		{[]int{1, 2, 3}, []int{1, 2}, false},
-		{[]int{1, 2, 3}, []int{4, 5, 6}, false},
-		{[]string{"test", "for", "SliceSetEqual"}, []string{"SliceSetEqual", "test", "for"}, true},
-		{[]string{"test", "for", "SliceSetEqual"}, []string{"test", "for", "SliceSetEqual"}, true},
-		{[]string{"test", "for", "SliceSetEqual"}, []string{"test", "for"}, false},
-		{[]string{"test", "for", "SliceSetEqual"}, []string{}, false},
-		{[]string{"test", "for", "SliceSetEqual"}, []string{"test", "for", "SliceContain"}, false},
-	}
-
-	for _, test := range cases {
-		switch test.s2.(type) {
-		case []string:
-			if got := SliceSetEqual(test.s1.([]string), test.s2.([]string)); got != test.want {
-				t.Errorf("SliceSetEqual(%v, %v) = %v", test.s1, test.s2, test.want)
-			}
-		case []int:
-			if got := SliceSetEqual(test.s1.([]int), test.s2.([]int)); got != test.want {
-				t.Errorf("SliceSetEqual(%v, %v) = %v", test.s1, test.s2, test.want)
-			}
-		}
-	}
-}
-
 func Test_SortedSliceEqual(t *testing.T) {
 	invalid := "invalid"
 	assert.Panics(t, func() { SortedSliceEqual(invalid, 1) })
