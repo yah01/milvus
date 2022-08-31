@@ -167,8 +167,8 @@ func (c *SegmentChecker) findNeedReleasedGrowingSegments(replica *meta.Replica) 
 	leaders := c.dist.ChannelDistManager.GetShardLeadersByReplica(replica)
 	for shard, leaderID := range leaders {
 		lview := c.dist.LeaderViewManager.GetLeaderShardView(leaderID, shard)
-    // find growing segments from leaderview's sealed segments 
-    // because growing segments should be released only after loading the compaction created segment successfully.
+		// find growing segments from leaderview's sealed segments
+		// because growing segments should be released only after loading the compaction created segment successfully.
 		for sid := range lview.Segments {
 			segment := c.targetMgr.GetSegment(sid)
 			if segment == nil {

@@ -144,8 +144,8 @@ func (suite *SegmentCheckerTestSuite) TestReleaseRepeatedSegments() {
 
 func (suite *SegmentCheckerTestSuite) TestReleaseGrowingSegments() {
 	checker := suite.checker
-  // segment3 is compacted from segment2, and node2 has growing segments 2 and 3. checker should generate
-  // 2 tasks to reduce segment 2 and 3.
+	// segment3 is compacted from segment2, and node2 has growing segments 2 and 3. checker should generate
+	// 2 tasks to reduce segment 2 and 3.
 	checker.meta.CollectionManager.PutCollection(utils.CreateTestCollection(1, 1))
 	checker.meta.ReplicaManager.Put(utils.CreateTestReplica(1, 1, []int64{1, 2}))
 
