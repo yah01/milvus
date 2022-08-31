@@ -57,11 +57,6 @@ func Test_SliceContain(t *testing.T) {
 }
 
 func Test_SliceSetEqual(t *testing.T) {
-	invalid := "invalid"
-	assert.Panics(t, func() { SliceSetEqual(invalid, 1) })
-	temp := []int{1, 2, 3}
-	assert.Panics(t, func() { SliceSetEqual(temp, invalid) })
-
 	cases := []struct {
 		s1   interface{}
 		s2   interface{}
@@ -82,8 +77,15 @@ func Test_SliceSetEqual(t *testing.T) {
 	}
 
 	for _, test := range cases {
-		if got := SliceSetEqual(test.s1, test.s2); got != test.want {
-			t.Errorf("SliceSetEqual(%v, %v) = %v", test.s1, test.s2, test.want)
+		switch test.s1.(type) {
+		case string:
+			if got := SliceSetEqual(test.s1.([]string), test.s2.([]string)); got != test.want {
+				t.Errorf("SliceSetEqual(%v, %v) = %v", test.s1, test.s2, test.want)
+			}
+		case int:
+			if got := SliceSetEqual(test.s1.([]int), test.s2.([]int)); got != test.want {
+				t.Errorf("SliceSetEqual(%v, %v) = %v", test.s1, test.s2, test.want)
+			}
 		}
 	}
 }

@@ -540,6 +540,12 @@ func (s *Server) handleNodeDown(node int64) {
 	log := log.With(zap.Int64("nodeID", node))
 	s.distController.Remove(node)
 
+	// Clear dist
+	s.dist.LeaderViewManager.Update(node)
+	s.dist.ChannelDistManager.Update(node)
+	s.dist.SegmentDistManager.Update(node)
+
+	// Clear meta
 	for _, collection := range s.meta.CollectionManager.GetAll() {
 		log := log.With(zap.Int64("collectionID", collection))
 		replica := s.meta.ReplicaManager.GetByCollectionAndNode(collection, node)
@@ -554,6 +560,9 @@ func (s *Server) handleNodeDown(node int64) {
 			)
 		}
 	}
+
+	// Clear tasks
+	s.taskScheduler.RemoveByNode(node)
 }
 
 // checkReplicas checks whether replica contains offline node, and remove those nodes

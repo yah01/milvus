@@ -156,6 +156,34 @@ func (_c *MockScheduler_GetNodeSegmentDelta_Call) Return(_a0 int) *MockScheduler
 	return _c
 }
 
+// RemoveByNode provides a mock function with given fields: node
+func (_m *MockScheduler) RemoveByNode(node int64) {
+	_m.Called(node)
+}
+
+// MockScheduler_RemoveByNode_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveByNode'
+type MockScheduler_RemoveByNode_Call struct {
+	*mock.Call
+}
+
+// RemoveByNode is a helper method to define mock.On call
+//  - node int64
+func (_e *MockScheduler_Expecter) RemoveByNode(node interface{}) *MockScheduler_RemoveByNode_Call {
+	return &MockScheduler_RemoveByNode_Call{Call: _e.mock.On("RemoveByNode", node)}
+}
+
+func (_c *MockScheduler_RemoveByNode_Call) Run(run func(node int64)) *MockScheduler_RemoveByNode_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(int64))
+	})
+	return _c
+}
+
+func (_c *MockScheduler_RemoveByNode_Call) Return() *MockScheduler_RemoveByNode_Call {
+	_c.Call.Return()
+	return _c
+}
+
 type mockConstructorTestingTNewMockScheduler interface {
 	mock.TestingT
 	Cleanup(func())
