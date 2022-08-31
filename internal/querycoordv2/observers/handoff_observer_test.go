@@ -60,14 +60,14 @@ func (suite *HandoffObserverTestSuit) SetupSuite() {
 	})
 
 	suite.sealedSegments = []*datapb.SegmentInfo{
-		&datapb.SegmentInfo{
+		{
 			ID:            1,
 			CollectionID:  100,
 			PartitionID:   10,
 			InsertChannel: "100-dmc0",
 			State:         commonpb.SegmentState_Sealed,
 		},
-		&datapb.SegmentInfo{
+		{
 			ID:            2,
 			CollectionID:  100,
 			PartitionID:   10,
