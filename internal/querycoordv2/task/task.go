@@ -2,12 +2,12 @@ package task
 
 import (
 	"context"
-	"sync/atomic"
 	"time"
 
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
 	. "github.com/milvus-io/milvus/internal/util/typeutil"
+	"go.uber.org/atomic"
 )
 
 type Status = int32
@@ -54,9 +54,10 @@ type Task interface {
 }
 
 type baseTask struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	doneCh chan struct{}
+	ctx      context.Context
+	cancel   context.CancelFunc
+	doneCh   chan struct{}
+	canceled *atomic.Bool
 
 	sourceID     UniqueID // RequestID
 	id           UniqueID // Set by scheduler
@@ -64,7 +65,7 @@ type baseTask struct {
 	replicaID    UniqueID
 	loadType     querypb.LoadType
 
-	status   Status
+	status   *atomic.Int32
 	priority Priority
 	err      error
 	actions  []Action
@@ -82,11 +83,12 @@ func newBaseTask(ctx context.Context, timeout time.Duration, sourceID, collectio
 		collectionID: collectionID,
 		replicaID:    replicaID,
 
-		status:   TaskStatusStarted,
+		status:   atomic.NewInt32(TaskStatusStarted),
 		priority: TaskPriorityNormal,
 		ctx:      ctx,
 		cancel:   cancel,
 		doneCh:   make(chan struct{}),
+		canceled: atomic.NewBool(false),
 	}
 }
 
@@ -119,11 +121,11 @@ func (task *baseTask) LoadType() querypb.LoadType {
 }
 
 func (task *baseTask) Status() Status {
-	return atomic.LoadInt32(&task.status)
+	return task.status.Load()
 }
 
 func (task *baseTask) SetStatus(status Status) {
-	atomic.StoreInt32(&task.status, status)
+	task.status.Store(status)
 }
 
 func (task *baseTask) Priority() Priority {
@@ -143,13 +145,9 @@ func (task *baseTask) SetErr(err error) {
 }
 
 func (task *baseTask) Cancel() {
-	task.cancel()
-	select {
-	case _, ok := <-task.doneCh:
-		if ok {
-			close(task.doneCh)
-		}
-	default:
+	if task.canceled.CAS(false, true) {
+		task.cancel()
+		close(task.doneCh)
 	}
 }
 

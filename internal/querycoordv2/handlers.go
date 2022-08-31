@@ -98,6 +98,7 @@ func (s *Server) balanceSegments(ctx context.Context, req *querypb.LoadBalanceRe
 		if err != nil {
 			return err
 		}
+		tasks = append(tasks, task)
 	}
 	return task.Wait(ctx, manualBalanceTimeout, tasks...)
 }

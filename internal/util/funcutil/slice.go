@@ -32,16 +32,6 @@ func SliceContain[T comparable, S ~[]T](slice S, item T) bool {
 	return false
 }
 
-// MapSliceContain returns true if slice s contains item.
-func MapSliceContain[T comparable, S ~[]T, R comparable](slice S, item R, fn func(item T) R) bool {
-	for i := range slice {
-		if fn(slice[i]) == item {
-			return true
-		}
-	}
-	return false
-}
-
 // SliceSetEqual is used to compare two Slice
 func SliceSetEqual[T comparable, S ~[]T](s1, s2 S) bool {
 	if len(s1) != len(s2) {
@@ -75,8 +65,4 @@ func SortedSliceEqual(s1, s2 interface{}) bool {
 		}
 	}
 	return true
-}
-
-func MakeSlice[T any](elements ...T) []T {
-	return elements
 }

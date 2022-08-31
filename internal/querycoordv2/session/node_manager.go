@@ -110,13 +110,6 @@ func (n *NodeInfo) releaseAllocation(space int64) {
 	n.mu.Unlock()
 }
 
-// GetScore return the score calculated by the current stats.
-// The higher score means the node has lighter load.
-func (n *NodeInfo) GetScore() int {
-	// TODO: impl
-	return -1
-}
-
 func NewNodeInfo(id int64, addr string) *NodeInfo {
 	return &NodeInfo{
 		stats: newStats(),

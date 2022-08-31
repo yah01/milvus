@@ -3,7 +3,7 @@ package utils
 import (
 	"context"
 	"fmt"
-	"sort"
+	"math/rand"
 
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
@@ -91,8 +91,8 @@ func GroupSegmentsByReplica(replicaMgr *meta.ReplicaManager, collectionID int64,
 func AssignNodesToReplicas(nodeMgr *session.NodeManager, replicas ...*meta.Replica) {
 	replicaNumber := len(replicas)
 	nodes := nodeMgr.GetAll()
-	sort.Slice(nodes, func(i, j int) bool {
-		return nodes[i].GetScore() < nodes[j].GetScore()
+	rand.Shuffle(len(nodes), func(i, j int) {
+		nodes[i], nodes[j] = nodes[j], nodes[i]
 	})
 
 	for i, node := range nodes {

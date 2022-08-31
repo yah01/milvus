@@ -170,38 +170,43 @@ func (suite *ServiceSuite) TestShowPartitions() {
 	suite.loadAll()
 	ctx := context.Background()
 	server := suite.server
-	collection := suite.collections[0]
-	partitions := suite.partitions[collection]
-	partitionNum := len(partitions)
 
-	// Test get all partitions
-	req := &querypb.ShowPartitionsRequest{
-		CollectionID: collection,
-	}
-	resp, err := server.ShowPartitions(ctx, req)
-	suite.NoError(err)
-	suite.Equal(commonpb.ErrorCode_Success, resp.Status.ErrorCode)
-	suite.Len(resp.PartitionIDs, partitionNum)
-	for _, partition := range partitions {
-		suite.Contains(resp.PartitionIDs, partition)
-	}
+	for _, collection := range suite.collections {
+		partitions := suite.partitions[collection]
+		partitionNum := len(partitions)
 
-	// Test get 1 partition
-	req = &querypb.ShowPartitionsRequest{
-		CollectionID: collection,
-		PartitionIDs: partitions[0:1],
-	}
-	resp, err = server.ShowPartitions(ctx, req)
-	suite.NoError(err)
-	suite.Equal(commonpb.ErrorCode_Success, resp.Status.ErrorCode)
-	suite.Len(resp.PartitionIDs, 1)
-	for _, partition := range partitions[0:1] {
-		suite.Contains(resp.PartitionIDs, partition)
+		// Test get all partitions
+		req := &querypb.ShowPartitionsRequest{
+			CollectionID: collection,
+		}
+		resp, err := server.ShowPartitions(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_Success, resp.Status.ErrorCode)
+		suite.Len(resp.PartitionIDs, partitionNum)
+		for _, partition := range partitions {
+			suite.Contains(resp.PartitionIDs, partition)
+		}
+
+		// Test get 1 partition
+		req = &querypb.ShowPartitionsRequest{
+			CollectionID: collection,
+			PartitionIDs: partitions[0:1],
+		}
+		resp, err = server.ShowPartitions(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_Success, resp.Status.ErrorCode)
+		suite.Len(resp.PartitionIDs, 1)
+		for _, partition := range partitions[0:1] {
+			suite.Contains(resp.PartitionIDs, partition)
+		}
 	}
 
 	// Test when server is not healthy
+	req := &querypb.ShowPartitionsRequest{
+		CollectionID: suite.collections[0],
+	}
 	server.UpdateStateCode(internalpb.StateCode_Initializing)
-	resp, err = server.ShowPartitions(ctx, req)
+	resp, err := server.ShowPartitions(ctx, req)
 	suite.NoError(err)
 	suite.Contains(resp.Status.Reason, ErrNotHealthy.Error())
 }
@@ -244,6 +249,39 @@ func (suite *ServiceSuite) TestLoadCollection() {
 	suite.Contains(resp.Reason, ErrNotHealthy.Error())
 }
 
+func (suite *ServiceSuite) TestLoadCollectionFailed() {
+	suite.loadAll()
+	ctx := context.Background()
+	server := suite.server
+
+	// Test load with different replica number
+	for _, collection := range suite.collections {
+		req := &querypb.LoadCollectionRequest{
+			CollectionID:  collection,
+			ReplicaNumber: suite.replicaNumber[collection] + 1,
+		}
+		resp, err := server.LoadCollection(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+		suite.Contains(resp.Reason, job.ErrLoadParameterMismatched.Error())
+	}
+
+	// Test load with partitions loaded
+	for _, collection := range suite.collections {
+		if suite.loadTypes[collection] != querypb.LoadType_LoadPartition {
+			continue
+		}
+
+		req := &querypb.LoadCollectionRequest{
+			CollectionID: collection,
+		}
+		resp, err := server.LoadCollection(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+		suite.Contains(resp.Reason, job.ErrLoadParameterMismatched.Error())
+	}
+}
+
 func (suite *ServiceSuite) TestLoadPartition() {
 	ctx := context.Background()
 	server := suite.server
@@ -282,6 +320,55 @@ func (suite *ServiceSuite) TestLoadPartition() {
 	resp, err := server.LoadPartitions(ctx, req)
 	suite.NoError(err)
 	suite.Contains(resp.Reason, ErrNotHealthy.Error())
+}
+
+func (suite *ServiceSuite) TestLoadPartitionFailed() {
+	suite.loadAll()
+	ctx := context.Background()
+	server := suite.server
+
+	// Test load with different replica number
+	for _, collection := range suite.collections {
+		req := &querypb.LoadPartitionsRequest{
+			CollectionID:  collection,
+			PartitionIDs:  suite.partitions[collection],
+			ReplicaNumber: suite.replicaNumber[collection] + 1,
+		}
+		resp, err := server.LoadPartitions(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+		suite.Contains(resp.Reason, job.ErrLoadParameterMismatched.Error())
+	}
+
+	// Test load with collection loaded
+	for _, collection := range suite.collections {
+		if suite.loadTypes[collection] != querypb.LoadType_LoadCollection {
+			continue
+		}
+		req := &querypb.LoadPartitionsRequest{
+			CollectionID: collection,
+			PartitionIDs: suite.partitions[collection],
+		}
+		resp, err := server.LoadPartitions(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+		suite.Contains(resp.Reason, job.ErrLoadParameterMismatched.Error())
+	}
+
+	// Test load with more partitions
+	for _, collection := range suite.collections {
+		if suite.loadTypes[collection] != querypb.LoadType_LoadPartition {
+			continue
+		}
+		req := &querypb.LoadPartitionsRequest{
+			CollectionID: collection,
+			PartitionIDs: append(suite.partitions[collection], 999),
+		}
+		resp, err := server.LoadPartitions(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+		suite.Contains(resp.Reason, job.ErrLoadParameterMismatched.Error())
+	}
 }
 
 func (suite *ServiceSuite) TestReleaseCollection() {
@@ -471,6 +558,96 @@ func (suite *ServiceSuite) TestLoadBalance() {
 	resp, err := server.LoadBalance(ctx, req)
 	suite.NoError(err)
 	suite.Contains(resp.Reason, ErrNotHealthy.Error())
+}
+
+func (suite *ServiceSuite) TestLoadBalanceFailed() {
+	suite.loadAll()
+	ctx := context.Background()
+	server := suite.server
+
+	// Test load balance without source node
+	for _, collection := range suite.collections {
+		replicas := suite.meta.ReplicaManager.GetByCollection(collection)
+		dstNode := replicas[0].GetNodes()[1]
+		segments := suite.getAllSegments(collection)
+		req := &querypb.LoadBalanceRequest{
+			CollectionID:     collection,
+			DstNodeIDs:       []int64{dstNode},
+			SealedSegmentIDs: segments,
+		}
+		resp, err := server.LoadBalance(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+		suite.Contains(resp.Reason, "source nodes can only contain 1 node")
+	}
+
+	// Test load balance with not fully loaded
+	for _, collection := range suite.collections {
+		replicas := suite.meta.ReplicaManager.GetByCollection(collection)
+		srcNode := replicas[0].GetNodes()[0]
+		dstNode := replicas[0].GetNodes()[1]
+		suite.updateCollectionStatus(collection, querypb.LoadStatus_Loading)
+		segments := suite.getAllSegments(collection)
+		req := &querypb.LoadBalanceRequest{
+			CollectionID:     collection,
+			SourceNodeIDs:    []int64{srcNode},
+			DstNodeIDs:       []int64{dstNode},
+			SealedSegmentIDs: segments,
+		}
+		resp, err := server.LoadBalance(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+		suite.Contains(resp.Reason, "can't balance segments of not fully loaded collection")
+	}
+
+	// Test load balance with source node and dest node not in the same replica
+	for _, collection := range suite.collections {
+		if suite.replicaNumber[collection] <= 1 {
+			continue
+		}
+
+		replicas := suite.meta.ReplicaManager.GetByCollection(collection)
+		srcNode := replicas[0].GetNodes()[0]
+		dstNode := replicas[1].GetNodes()[0]
+		suite.updateCollectionStatus(collection, querypb.LoadStatus_Loaded)
+		suite.updateSegmentDist(collection, srcNode)
+		segments := suite.getAllSegments(collection)
+		req := &querypb.LoadBalanceRequest{
+			CollectionID:     collection,
+			SourceNodeIDs:    []int64{srcNode},
+			DstNodeIDs:       []int64{dstNode},
+			SealedSegmentIDs: segments,
+		}
+		resp, err := server.LoadBalance(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+		suite.Contains(resp.Reason, "destination nodes have to be in the same replica of source node")
+	}
+
+	// Test balance task failed
+	for _, collection := range suite.collections {
+		replicas := suite.meta.ReplicaManager.GetByCollection(collection)
+		srcNode := replicas[0].GetNodes()[0]
+		dstNode := replicas[0].GetNodes()[1]
+		suite.updateCollectionStatus(collection, querypb.LoadStatus_Loaded)
+		suite.updateSegmentDist(collection, srcNode)
+		segments := suite.getAllSegments(collection)
+		req := &querypb.LoadBalanceRequest{
+			CollectionID:     collection,
+			SourceNodeIDs:    []int64{srcNode},
+			DstNodeIDs:       []int64{dstNode},
+			SealedSegmentIDs: segments,
+		}
+		suite.taskScheduler.EXPECT().Add(mock.Anything).Run(func(balanceTask task.Task) {
+			balanceTask.SetErr(task.ErrTaskCanceled)
+			balanceTask.Cancel()
+		}).Return(nil)
+		resp, err := server.LoadBalance(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+		suite.Contains(resp.Reason, "failed to balance segments")
+		suite.Contains(resp.Reason, task.ErrTaskCanceled.Error())
+	}
 }
 
 func (suite *ServiceSuite) TestShowConfigurations() {
