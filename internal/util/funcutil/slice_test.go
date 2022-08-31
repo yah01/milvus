@@ -56,6 +56,38 @@ func Test_SliceContain(t *testing.T) {
 	}
 }
 
+func Test_SliceSetEqual(t *testing.T) {
+	invalid := "invalid"
+	assert.Panics(t, func() { SliceSetEqual(invalid, 1) })
+	temp := []int{1, 2, 3}
+	assert.Panics(t, func() { SliceSetEqual(temp, invalid) })
+
+	cases := []struct {
+		s1   interface{}
+		s2   interface{}
+		want bool
+	}{
+		{[]int{}, []int{}, true},
+		{[]string{}, []string{}, true},
+		{[]int{1, 2, 3}, []int{3, 2, 1}, true},
+		{[]int{1, 2, 3}, []int{1, 2, 3}, true},
+		{[]int{1, 2, 3}, []int{}, false},
+		{[]int{1, 2, 3}, []int{1, 2}, false},
+		{[]int{1, 2, 3}, []int{4, 5, 6}, false},
+		{[]string{"test", "for", "SliceSetEqual"}, []string{"SliceSetEqual", "test", "for"}, true},
+		{[]string{"test", "for", "SliceSetEqual"}, []string{"test", "for", "SliceSetEqual"}, true},
+		{[]string{"test", "for", "SliceSetEqual"}, []string{"test", "for"}, false},
+		{[]string{"test", "for", "SliceSetEqual"}, []string{}, false},
+		{[]string{"test", "for", "SliceSetEqual"}, []string{"test", "for", "SliceContain"}, false},
+	}
+
+	for _, test := range cases {
+		if got := SliceSetEqual(test.s1, test.s2); got != test.want {
+			t.Errorf("SliceSetEqual(%v, %v) = %v", test.s1, test.s2, test.want)
+		}
+	}
+}
+
 func Test_SortedSliceEqual(t *testing.T) {
 	invalid := "invalid"
 	assert.Panics(t, func() { SortedSliceEqual(invalid, 1) })
