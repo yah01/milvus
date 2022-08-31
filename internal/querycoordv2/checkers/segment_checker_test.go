@@ -144,28 +144,35 @@ func (suite *SegmentCheckerTestSuite) TestReleaseRepeatedSegments() {
 
 func (suite *SegmentCheckerTestSuite) TestReleaseGrowingSegments() {
 	checker := suite.checker
-	// set meta
+  // segment3 is compacted from segment2, and node2 has growing segments 2 and 3. checker should generate
+  // 2 tasks to reduce segment 2 and 3.
 	checker.meta.CollectionManager.PutCollection(utils.CreateTestCollection(1, 1))
 	checker.meta.ReplicaManager.Put(utils.CreateTestReplica(1, 1, []int64{1, 2}))
 
-	// set target
 	segment := utils.CreateTestSegmentInfo(1, 1, 3, "test-insert-channel")
 	segment.CompactionFrom = append(segment.CompactionFrom, 2)
 	checker.targetMgr.AddSegment(segment)
 
-	// set dist
 	checker.dist.ChannelDistManager.Update(2, utils.CreateTestChannel(1, 2, 1, "test-insert-channel"))
-	checker.dist.LeaderViewManager.Update(2, utils.CreateTestLeaderView(2, 1, "test-insert-channel", map[int64]int64{3: 2}, []int64{2}))
-	checker.dist.SegmentDistManager.Update(2, utils.CreateTestSegment(1, 1, 3, 1, 2, "test-insert-channel"))
+	checker.dist.LeaderViewManager.Update(2, utils.CreateTestLeaderView(2, 1, "test-insert-channel", map[int64]int64{3: 2}, []int64{2, 3}))
+	checker.dist.SegmentDistManager.Update(2, utils.CreateTestSegment(1, 1, 3, 2, 1, "test-insert-channel"))
 
 	tasks := checker.Check(context.TODO())
-	suite.Len(tasks, 1)
+	suite.Len(tasks, 2)
 	suite.Len(tasks[0].Actions(), 1)
 	action, ok := tasks[0].Actions()[0].(*task.SegmentAction)
 	suite.True(ok)
 	suite.EqualValues(1, tasks[0].ReplicaID())
 	suite.Equal(task.ActionTypeReduce, action.Type())
 	suite.EqualValues(2, action.SegmentID())
+	suite.EqualValues(2, action.Node())
+
+	suite.Len(tasks[1].Actions(), 1)
+	action, ok = tasks[1].Actions()[0].(*task.SegmentAction)
+	suite.True(ok)
+	suite.EqualValues(1, tasks[1].ReplicaID())
+	suite.Equal(task.ActionTypeReduce, action.Type())
+	suite.EqualValues(3, action.SegmentID())
 	suite.EqualValues(2, action.Node())
 }
 

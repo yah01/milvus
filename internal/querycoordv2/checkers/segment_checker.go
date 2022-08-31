@@ -163,30 +163,22 @@ func (c *SegmentChecker) filterExistedOnLeader(replica *meta.Replica, segments [
 }
 
 func (c *SegmentChecker) findNeedReleasedGrowingSegments(replica *meta.Replica) map[int64][]int64 {
-	// log := log.With(
-	// 	zap.Int64("collectionID", replica.GetCollectionID()),
-	// 	zap.Int64("replicaID", replica.GetID()),
-	// )
-
 	ret := make(map[int64][]int64, 0) // leaderID -> segment ids
-	segments := c.targetMgr.GetSegmentsByCollection(replica.GetCollectionID())
 	leaders := c.dist.ChannelDistManager.GetShardLeadersByReplica(replica)
-	leaderViews := make(map[string]*meta.LeaderView) // shard -> leaderview
-	for _, s := range segments {
-		lview, ok := leaderViews[s.GetInsertChannel()]
-		if !ok {
-			leaderID, ok := leaders[s.GetInsertChannel()]
-			if !ok {
-				// log.Warn("leader not found", zap.String("channel", s.GetInsertChannel()))
+	for shard, leaderID := range leaders {
+		lview := c.dist.LeaderViewManager.GetLeaderShardView(leaderID, shard)
+    // find growing segments from leaderview's sealed segments 
+    // because growing segments should be released only after loading the compaction created segment successfully.
+		for sid := range lview.Segments {
+			segment := c.targetMgr.GetSegment(sid)
+			if segment == nil {
 				continue
 			}
-			lview = c.dist.LeaderViewManager.GetLeaderShardView(leaderID, s.GetInsertChannel())
-			leaderViews[s.GetInsertChannel()] = lview
-		}
-		sources := s.GetCompactionFrom()
-		for _, source := range sources {
-			if lview.GrowingSegments.Contain(source) {
-				ret[lview.ID] = append(ret[lview.ID], source)
+			sources := append(segment.GetCompactionFrom(), segment.GetID())
+			for _, source := range sources {
+				if lview.GrowingSegments.Contain(source) {
+					ret[lview.ID] = append(ret[lview.ID], source)
+				}
 			}
 		}
 	}
