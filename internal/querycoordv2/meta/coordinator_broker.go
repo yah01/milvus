@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path"
 	"time"
 
 	"github.com/milvus-io/milvus/internal/log"
@@ -14,14 +13,11 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/proto/schemapb"
-	. "github.com/milvus-io/milvus/internal/querycoordv2/params"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/types"
-	"github.com/milvus-io/milvus/internal/util/retry"
 
 	"go.uber.org/zap"
 
-	"github.com/milvus-io/milvus/internal/util/funcutil"
 	. "github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
@@ -35,10 +31,6 @@ type Broker interface {
 	GetRecoveryInfo(ctx context.Context, collectionID UniqueID, partitionID UniqueID) ([]*datapb.VchannelInfo, []*datapb.SegmentBinlogs, error)
 	GetSegmentInfo(ctx context.Context, segmentID ...UniqueID) ([]*datapb.SegmentInfo, error)
 	GetIndexInfo(ctx context.Context, collectionID UniqueID, segmentID UniqueID) ([]*querypb.FieldIndexInfo, error)
-	// GetIndexFilePaths(ctx context.Context, buildID int64) ([]*indexpb.IndexFilePathInfo, error)
-	// LoadIndexExtraInfo(ctx context.Context, fieldPathInfo *indexpb.IndexFilePathInfo) (*ExtraIndexInfo, error)
-	// AcquireSegmentsReferLock(ctx context.Context, segmentIDs []UniqueID) error
-	ReleaseSegmentReferLock(ctx context.Context, segmentIDs []UniqueID) error
 }
 
 type CoordinatorBroker struct {
@@ -96,7 +88,6 @@ func (broker *CoordinatorBroker) GetPartitions(ctx context.Context, collectionID
 		log.Error("showPartition failed", zap.Int64("collectionID", collectionID), zap.Error(err))
 		return nil, err
 	}
-	// log.Info("show partition successfully", zap.Int64("collectionID", collectionID), zap.Int64s("partitionIDs", resp.PartitionIDs))
 
 	return resp.PartitionIDs, nil
 }
@@ -123,11 +114,6 @@ func (broker *CoordinatorBroker) GetRecoveryInfo(ctx context.Context, collection
 		log.Error("get recovery info failed", zap.Int64("collectionID", collectionID), zap.Int64("partitionID", partitionID), zap.Error(err))
 		return nil, nil, err
 	}
-	// log.Info("get recovery info successfully",
-	// 	zap.Int64("collectionID", collectionID),
-	// 	zap.Int64("partitionID", partitionID),
-	// 	zap.Int("num channels", len(recoveryInfo.Channels)),
-	// 	zap.Int("num segments", len(recoveryInfo.Binlogs)))
 
 	return recoveryInfo.Channels, recoveryInfo.Binlogs, nil
 }
@@ -202,123 +188,4 @@ func (broker *CoordinatorBroker) GetIndexInfo(ctx context.Context, collectionID 
 	}
 
 	return indexes, nil
-}
-
-type ExtraIndexInfo struct {
-	indexID        UniqueID
-	indexName      string
-	indexParams    []*commonpb.KeyValuePair
-	indexSize      uint64
-	indexFilePaths []string
-}
-
-func (broker *CoordinatorBroker) LoadIndexExtraInfo(ctx context.Context, fieldPathInfo *indexpb.IndexFilePathInfo) (*ExtraIndexInfo, error) {
-	indexCodec := storage.NewIndexFileBinlogCodec()
-	for _, indexFilePath := range fieldPathInfo.IndexFilePaths {
-		// get index params when detecting indexParamPrefix
-		if path.Base(indexFilePath) == storage.IndexParamsKey {
-			content, err := broker.cm.MultiRead([]string{indexFilePath})
-			if err != nil {
-				return nil, err
-			}
-
-			if len(content) <= 0 {
-				return nil, fmt.Errorf("failed to read index file binlog, path: %s", indexFilePath)
-			}
-
-			indexPiece := content[0]
-			_, indexParams, indexName, _, err := indexCodec.Deserialize([]*storage.Blob{{Key: storage.IndexParamsKey, Value: indexPiece}})
-			if err != nil {
-				return nil, err
-			}
-
-			return &ExtraIndexInfo{
-				indexName:   indexName,
-				indexParams: funcutil.Map2KeyValuePair(indexParams),
-			}, nil
-		}
-	}
-	return nil, errors.New("failed to load index extra info")
-}
-
-func (broker *CoordinatorBroker) AcquireSegmentsReferLock(ctx context.Context, segmentIDs []UniqueID) error {
-	ctx, cancel := context.WithTimeout(ctx, brokerRPCTimeout)
-	defer cancel()
-	acquireSegLockReq := &datapb.AcquireSegmentLockRequest{
-		SegmentIDs: segmentIDs,
-		NodeID:     Params.QueryCoordCfg.GetNodeID(),
-	}
-	status, err := broker.dataCoord.AcquireSegmentLock(ctx, acquireSegLockReq)
-	if err != nil {
-		log.Error("QueryCoord acquire the segment reference lock error", zap.Int64s("segIDs", segmentIDs),
-			zap.Error(err))
-		return err
-	}
-	if status.ErrorCode != commonpb.ErrorCode_Success {
-		log.Error("QueryCoord acquire the segment reference lock error", zap.Int64s("segIDs", segmentIDs),
-			zap.String("failed reason", status.Reason))
-		return fmt.Errorf(status.Reason)
-	}
-
-	return nil
-}
-
-func (broker *CoordinatorBroker) ReleaseSegmentReferLock(ctx context.Context, segmentIDs []UniqueID) error {
-	ctx, cancel := context.WithTimeout(ctx, brokerRPCTimeout)
-	defer cancel()
-
-	releaseSegReferLockReq := &datapb.ReleaseSegmentLockRequest{
-		NodeID:     Params.QueryCoordCfg.GetNodeID(),
-		SegmentIDs: segmentIDs,
-	}
-
-	if err := retry.Do(ctx, func() error {
-		status, err := broker.dataCoord.ReleaseSegmentLock(ctx, releaseSegReferLockReq)
-		if err != nil {
-			log.Error("QueryCoord release reference lock on segments failed", zap.Int64s("segmentIDs", segmentIDs),
-				zap.Error(err))
-			return err
-		}
-
-		if status.ErrorCode != commonpb.ErrorCode_Success {
-			log.Error("QueryCoord release reference lock on segments failed", zap.Int64s("segmentIDs", segmentIDs),
-				zap.String("failed reason", status.Reason))
-			return errors.New(status.Reason)
-		}
-		return nil
-	}, retry.Attempts(100)); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Better to let index params key appear in the file paths first.
-func (broker *CoordinatorBroker) loadIndexExtraInfo(ctx context.Context, fieldPathInfo *indexpb.IndexFilePathInfo) (*ExtraIndexInfo, error) {
-	indexCodec := storage.NewIndexFileBinlogCodec()
-	for _, indexFilePath := range fieldPathInfo.IndexFilePaths {
-		// get index params when detecting indexParamPrefix
-		if path.Base(indexFilePath) == storage.IndexParamsKey {
-			content, err := broker.cm.MultiRead([]string{indexFilePath})
-			if err != nil {
-				return nil, err
-			}
-
-			if len(content) <= 0 {
-				return nil, fmt.Errorf("failed to read index file binlog, path: %s", indexFilePath)
-			}
-
-			indexPiece := content[0]
-			_, indexParams, indexName, _, err := indexCodec.Deserialize([]*storage.Blob{{Key: storage.IndexParamsKey, Value: indexPiece}})
-			if err != nil {
-				return nil, err
-			}
-
-			return &ExtraIndexInfo{
-				indexName:   indexName,
-				indexParams: funcutil.Map2KeyValuePair(indexParams),
-			}, nil
-		}
-	}
-	return nil, errors.New("failed to load index extra info")
 }

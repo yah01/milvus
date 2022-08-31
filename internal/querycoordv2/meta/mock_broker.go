@@ -6,8 +6,6 @@ import (
 	context "context"
 
 	datapb "github.com/milvus-io/milvus/internal/proto/datapb"
-	indexpb "github.com/milvus-io/milvus/internal/proto/indexpb"
-
 	mock "github.com/stretchr/testify/mock"
 
 	querypb "github.com/milvus-io/milvus/internal/proto/querypb"
@@ -26,44 +24,6 @@ type MockBroker_Expecter struct {
 
 func (_m *MockBroker) EXPECT() *MockBroker_Expecter {
 	return &MockBroker_Expecter{mock: &_m.Mock}
-}
-
-// AcquireSegmentsReferLock provides a mock function with given fields: ctx, segmentIDs
-func (_m *MockBroker) AcquireSegmentsReferLock(ctx context.Context, segmentIDs []int64) error {
-	ret := _m.Called(ctx, segmentIDs)
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, []int64) error); ok {
-		r0 = rf(ctx, segmentIDs)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// MockBroker_AcquireSegmentsReferLock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AcquireSegmentsReferLock'
-type MockBroker_AcquireSegmentsReferLock_Call struct {
-	*mock.Call
-}
-
-// AcquireSegmentsReferLock is a helper method to define mock.On call
-//  - ctx context.Context
-//  - segmentIDs []int64
-func (_e *MockBroker_Expecter) AcquireSegmentsReferLock(ctx interface{}, segmentIDs interface{}) *MockBroker_AcquireSegmentsReferLock_Call {
-	return &MockBroker_AcquireSegmentsReferLock_Call{Call: _e.mock.On("AcquireSegmentsReferLock", ctx, segmentIDs)}
-}
-
-func (_c *MockBroker_AcquireSegmentsReferLock_Call) Run(run func(ctx context.Context, segmentIDs []int64)) *MockBroker_AcquireSegmentsReferLock_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].([]int64))
-	})
-	return _c
-}
-
-func (_c *MockBroker_AcquireSegmentsReferLock_Call) Return(_a0 error) *MockBroker_AcquireSegmentsReferLock_Call {
-	_c.Call.Return(_a0)
-	return _c
 }
 
 // GetCollectionSchema provides a mock function with given fields: ctx, collectionID
@@ -109,53 +69,6 @@ func (_c *MockBroker_GetCollectionSchema_Call) Run(run func(ctx context.Context,
 }
 
 func (_c *MockBroker_GetCollectionSchema_Call) Return(_a0 *schemapb.CollectionSchema, _a1 error) *MockBroker_GetCollectionSchema_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-// GetIndexFilePaths provides a mock function with given fields: ctx, buildID
-func (_m *MockBroker) GetIndexFilePaths(ctx context.Context, buildID int64) ([]*indexpb.IndexFilePathInfo, error) {
-	ret := _m.Called(ctx, buildID)
-
-	var r0 []*indexpb.IndexFilePathInfo
-	if rf, ok := ret.Get(0).(func(context.Context, int64) []*indexpb.IndexFilePathInfo); ok {
-		r0 = rf(ctx, buildID)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*indexpb.IndexFilePathInfo)
-		}
-	}
-
-	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, int64) error); ok {
-		r1 = rf(ctx, buildID)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// MockBroker_GetIndexFilePaths_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetIndexFilePaths'
-type MockBroker_GetIndexFilePaths_Call struct {
-	*mock.Call
-}
-
-// GetIndexFilePaths is a helper method to define mock.On call
-//  - ctx context.Context
-//  - buildID int64
-func (_e *MockBroker_Expecter) GetIndexFilePaths(ctx interface{}, buildID interface{}) *MockBroker_GetIndexFilePaths_Call {
-	return &MockBroker_GetIndexFilePaths_Call{Call: _e.mock.On("GetIndexFilePaths", ctx, buildID)}
-}
-
-func (_c *MockBroker_GetIndexFilePaths_Call) Run(run func(ctx context.Context, buildID int64)) *MockBroker_GetIndexFilePaths_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64))
-	})
-	return _c
-}
-
-func (_c *MockBroker_GetIndexFilePaths_Call) Return(_a0 []*indexpb.IndexFilePathInfo, _a1 error) *MockBroker_GetIndexFilePaths_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
@@ -370,91 +283,6 @@ func (_c *MockBroker_GetSegmentInfo_Call) Run(run func(ctx context.Context, segm
 
 func (_c *MockBroker_GetSegmentInfo_Call) Return(_a0 []*datapb.SegmentInfo, _a1 error) *MockBroker_GetSegmentInfo_Call {
 	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-// LoadIndexExtraInfo provides a mock function with given fields: ctx, fieldPathInfo
-func (_m *MockBroker) LoadIndexExtraInfo(ctx context.Context, fieldPathInfo *indexpb.IndexFilePathInfo) (*ExtraIndexInfo, error) {
-	ret := _m.Called(ctx, fieldPathInfo)
-
-	var r0 *ExtraIndexInfo
-	if rf, ok := ret.Get(0).(func(context.Context, *indexpb.IndexFilePathInfo) *ExtraIndexInfo); ok {
-		r0 = rf(ctx, fieldPathInfo)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*ExtraIndexInfo)
-		}
-	}
-
-	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, *indexpb.IndexFilePathInfo) error); ok {
-		r1 = rf(ctx, fieldPathInfo)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// MockBroker_LoadIndexExtraInfo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'LoadIndexExtraInfo'
-type MockBroker_LoadIndexExtraInfo_Call struct {
-	*mock.Call
-}
-
-// LoadIndexExtraInfo is a helper method to define mock.On call
-//  - ctx context.Context
-//  - fieldPathInfo *indexpb.IndexFilePathInfo
-func (_e *MockBroker_Expecter) LoadIndexExtraInfo(ctx interface{}, fieldPathInfo interface{}) *MockBroker_LoadIndexExtraInfo_Call {
-	return &MockBroker_LoadIndexExtraInfo_Call{Call: _e.mock.On("LoadIndexExtraInfo", ctx, fieldPathInfo)}
-}
-
-func (_c *MockBroker_LoadIndexExtraInfo_Call) Run(run func(ctx context.Context, fieldPathInfo *indexpb.IndexFilePathInfo)) *MockBroker_LoadIndexExtraInfo_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*indexpb.IndexFilePathInfo))
-	})
-	return _c
-}
-
-func (_c *MockBroker_LoadIndexExtraInfo_Call) Return(_a0 *ExtraIndexInfo, _a1 error) *MockBroker_LoadIndexExtraInfo_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-// ReleaseSegmentReferLock provides a mock function with given fields: ctx, segmentIDs
-func (_m *MockBroker) ReleaseSegmentReferLock(ctx context.Context, segmentIDs []int64) error {
-	ret := _m.Called(ctx, segmentIDs)
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, []int64) error); ok {
-		r0 = rf(ctx, segmentIDs)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// MockBroker_ReleaseSegmentReferLock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReleaseSegmentReferLock'
-type MockBroker_ReleaseSegmentReferLock_Call struct {
-	*mock.Call
-}
-
-// ReleaseSegmentReferLock is a helper method to define mock.On call
-//  - ctx context.Context
-//  - segmentIDs []int64
-func (_e *MockBroker_Expecter) ReleaseSegmentReferLock(ctx interface{}, segmentIDs interface{}) *MockBroker_ReleaseSegmentReferLock_Call {
-	return &MockBroker_ReleaseSegmentReferLock_Call{Call: _e.mock.On("ReleaseSegmentReferLock", ctx, segmentIDs)}
-}
-
-func (_c *MockBroker_ReleaseSegmentReferLock_Call) Run(run func(ctx context.Context, segmentIDs []int64)) *MockBroker_ReleaseSegmentReferLock_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].([]int64))
-	})
-	return _c
-}
-
-func (_c *MockBroker_ReleaseSegmentReferLock_Call) Return(_a0 error) *MockBroker_ReleaseSegmentReferLock_Call {
-	_c.Call.Return(_a0)
 	return _c
 }
 
