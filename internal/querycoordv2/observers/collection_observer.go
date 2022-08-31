@@ -74,7 +74,7 @@ func (ob *CollectionObserver) observeTimeout() {
 		}
 
 		log.Info("load collection timeout, cancel it",
-			zap.Int64("collection", collection.GetCollectionID()),
+			zap.Int64("collectionID", collection.GetCollectionID()),
 			zap.Duration("loadTime", time.Since(collection.CreatedAt)))
 		ob.meta.CollectionManager.RemoveCollection(collection.GetCollectionID())
 		ob.meta.ReplicaManager.RemoveCollection(collection.GetCollectionID())
@@ -88,7 +88,7 @@ func (ob *CollectionObserver) observeTimeout() {
 	}
 	for collection, partitions := range partitions {
 		log := log.With(
-			zap.Int64("collection", collection),
+			zap.Int64("collectionID", collection),
 		)
 		for _, partition := range partitions {
 			if partition.GetStatus() != querypb.LoadStatus_Loading ||
@@ -97,7 +97,7 @@ func (ob *CollectionObserver) observeTimeout() {
 			}
 
 			log.Info("load partition timeout, cancel all partitions",
-				zap.Int64("partition", partition.GetPartitionID()),
+				zap.Int64("partitionID", partition.GetPartitionID()),
 				zap.Duration("loadTime", time.Since(partition.CreatedAt)))
 			// TODO(yah01): Now, releasing part of partitions is not allowed
 			ob.meta.CollectionManager.RemoveCollection(partition.GetCollectionID())
@@ -130,7 +130,7 @@ func (ob *CollectionObserver) observeLoadStatus() {
 }
 
 func (ob *CollectionObserver) observeCollectionLoadStatus(collection *meta.Collection) {
-	log := log.With(zap.Int64("collection", collection.GetCollectionID()))
+	log := log.With(zap.Int64("collectionID", collection.GetCollectionID()))
 
 	segmentTargets := ob.targetMgr.GetSegmentsByCollection(collection.GetCollectionID())
 	channelTargets := ob.targetMgr.GetDmChannelsByCollection(collection.GetCollectionID())
@@ -189,8 +189,8 @@ func (ob *CollectionObserver) observeCollectionLoadStatus(collection *meta.Colle
 
 func (ob *CollectionObserver) observePartitionLoadStatus(partition *meta.Partition) {
 	log := log.With(
-		zap.Int64("collection", partition.GetCollectionID()),
-		zap.Int64("partition", partition.GetPartitionID()),
+		zap.Int64("collectionID", partition.GetCollectionID()),
+		zap.Int64("partitionID", partition.GetPartitionID()),
 	)
 
 	segmentTargets := ob.targetMgr.GetSegmentsByCollection(partition.GetCollectionID(), partition.GetPartitionID())
