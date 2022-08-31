@@ -11,6 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/samber/lo"
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/milvus-io/milvus/internal/allocator"
 	"github.com/milvus-io/milvus/internal/common"
 	"github.com/milvus-io/milvus/internal/kv"
@@ -37,10 +42,6 @@ import (
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
-	"github.com/samber/lo"
-	clientv3 "go.etcd.io/etcd/client/v3"
-	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -269,14 +270,7 @@ func (s *Server) initObserver() {
 		s.targetMgr,
 		s.cluster,
 	)
-	s.handoffObserver = observers.NewHandoffObserver(
-		s.ctx,
-		s.store,
-		s.meta,
-		s.dist,
-		s.targetMgr,
-		s.broker,
-	)
+	s.handoffObserver = observers.NewHandoffObserver(s.store, s.meta, s.dist, s.targetMgr)
 }
 
 func (s *Server) Start() error {
@@ -310,7 +304,10 @@ func (s *Server) Start() error {
 	log.Info("start observers...")
 	s.collectionObserver.Start(s.ctx)
 	s.leaderObserver.Start(s.ctx)
-	s.handoffObserver.Start(s.ctx)
+	if err := s.handoffObserver.Start(s.ctx); err != nil {
+		log.Error("start handoff observer failed, exit...", zap.Error(err))
+		panic(err.Error())
+	}
 
 	s.status.Store(internalpb.StateCode_Healthy)
 	log.Info("QueryCoord started")

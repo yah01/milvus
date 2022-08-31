@@ -19,10 +19,6 @@ import (
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
-const (
-	waitIndexQueueSizeLimit = 50
-)
-
 type HandoffObserver struct {
 	store    meta.Store
 	c        chan struct{}
@@ -30,40 +26,57 @@ type HandoffObserver struct {
 	meta     *meta.Meta
 	dist     *meta.DistributionManager
 	target   *meta.TargetManager
-	broker   meta.Broker
 	revision int64
 
 	handoffEventLock sync.RWMutex
-	// notice: another better way is to trigger a handoff after index ready
-	waitingIndexQueue map[typeutil.UniqueID]*querypb.SegmentInfo
 	//triggered events, used to check finish status
 	triggeredHandoffEvents map[typeutil.UniqueID]*datapb.SegmentInfo
 }
 
-func NewHandoffObserver(
-	ctx context.Context,
-	store meta.Store,
-	meta *meta.Meta,
-	dist *meta.DistributionManager,
-	target *meta.TargetManager,
-	broker meta.Broker) *HandoffObserver {
-	ob := &HandoffObserver{
+func NewHandoffObserver(store meta.Store, meta *meta.Meta, dist *meta.DistributionManager, target *meta.TargetManager) *HandoffObserver {
+	return &HandoffObserver{
 		store:                  store,
 		c:                      make(chan struct{}),
 		meta:                   meta,
 		dist:                   dist,
 		target:                 target,
-		broker:                 broker,
-		waitingIndexQueue:      make(map[typeutil.UniqueID]*querypb.SegmentInfo, 0),
 		triggeredHandoffEvents: map[typeutil.UniqueID]*datapb.SegmentInfo{},
 	}
-
-	return ob
 }
 
-func (ob *HandoffObserver) Start(ctx context.Context) {
+func (ob *HandoffObserver) reloadFromStore(ctx context.Context) error {
+	_, handoffReqValues, version, err := ob.store.LoadHandoffWithRevision()
+	if err != nil {
+		log.Error("reloadFromKV: LoadWithRevision from kv failed", zap.Error(err))
+		return err
+	}
+	ob.revision = version
+
+	for _, value := range handoffReqValues {
+		segmentInfo := &querypb.SegmentInfo{}
+		err := proto.Unmarshal([]byte(value), segmentInfo)
+		if err != nil {
+			log.Error("reloadFromKV: unmarshal failed", zap.Any("error", err.Error()))
+			return err
+		}
+		ob.tryHandoff(ctx, segmentInfo)
+	}
+
+	return nil
+}
+
+func (ob *HandoffObserver) Start(ctx context.Context) error {
+	log.Info("Start reload handoff event from etcd")
+	if err := ob.reloadFromStore(ctx); err != nil {
+		log.Error("handoff observer reload from kv failed", zap.Error(err))
+		return err
+	}
+	log.Info("Finish reload handoff event from etcd")
+
 	ob.wg.Add(1)
 	go ob.schedule(ctx)
+
+	return nil
 }
 
 func (ob *HandoffObserver) Stop() {
@@ -75,6 +88,7 @@ func (ob *HandoffObserver) schedule(ctx context.Context) {
 	defer ob.wg.Done()
 	log.Info("start watch segment handoff loop")
 	ticker := time.NewTicker(Params.QueryCoordCfg.CheckHandoffInterval)
+	log.Info("handoff interval", zap.String("interval", Params.QueryCoordCfg.CheckHandoffInterval.String()))
 	watchChan := ob.store.WatchHandoffEvent(ob.revision + 1)
 	for {
 		select {
@@ -107,7 +121,7 @@ func (ob *HandoffObserver) schedule(ctx context.Context) {
 				case mvccpb.PUT:
 					ob.tryHandoff(ctx, segmentInfo)
 				default:
-					log.Warn("receive handoff event",
+					log.Warn("HandoffObserver: receive event",
 						zap.String("type", event.Type.String()),
 						zap.String("key", string(event.Kv.Key)),
 					)
@@ -115,9 +129,6 @@ func (ob *HandoffObserver) schedule(ctx context.Context) {
 			}
 
 		case <-ticker.C:
-			for _, segment := range ob.waitingIndexQueue {
-				ob.tryHandoff(ctx, segment)
-			}
 			ob.tryRelease()
 			ob.tryClean(ctx)
 		}
@@ -131,47 +142,27 @@ func (ob *HandoffObserver) tryHandoff(ctx context.Context, segment *querypb.Segm
 		zap.Int64("partitionID", segment.PartitionID),
 		zap.Int64("segmentID", segment.SegmentID))
 
-	if Params.QueryCoordCfg.AutoHandoff &&
-		ob.meta.Exist(segment.GetCollectionID()) {
-		// filter index ready segment
-		isSegmentIndexReady := func(segment *querypb.SegmentInfo) bool {
-			// TODO we sobuld not directly poll the index info, wait for notification sobuld be a better idea.
-			_, err := ob.broker.GetIndexInfo(ctx, segment.CollectionID, segment.SegmentID)
-			return err == nil
+	if Params.QueryCoordCfg.AutoHandoff && ob.meta.Exist(segment.GetCollectionID()) {
+		targets := ob.target.GetSegmentsByCollection(segment.GetCollectionID(), segment.GetPartitionID())
+		// when handoff event load a segment, it sobuld remove all recursive handoff compact from
+		uniqueSet := typeutil.NewUniqueSet()
+		recursiveCompactFrom := ob.getOverrideSegmentInfo(targets, segment.CompactionFrom...)
+		uniqueSet.Insert(recursiveCompactFrom...)
+		uniqueSet.Insert(segment.GetCompactionFrom()...)
+
+		segmentInfo := &datapb.SegmentInfo{
+			ID:                  segment.SegmentID,
+			CollectionID:        segment.CollectionID,
+			PartitionID:         segment.PartitionID,
+			InsertChannel:       segment.GetDmChannel(),
+			State:               segment.GetSegmentState(),
+			CreatedByCompaction: segment.GetCreatedByCompaction(),
+			CompactionFrom:      uniqueSet.Collect(),
 		}
 
-		if ob.meta.GetStatus(segment.GetCollectionID()) != querypb.LoadStatus_Invalid &&
-			isSegmentIndexReady(segment) {
-			// when handoff event load a segment, it sobuld remove all recursive handoff compact from
-			targets := ob.target.GetSegmentsByCollection(segment.GetCollectionID(), segment.GetPartitionID())
-			recursiveCompactFrom := ob.getOverrideSegmentInfo(targets, segment.CompactionFrom...)
-			recursiveCompactFrom = append(recursiveCompactFrom, segment.GetCompactionFrom()...)
-
-			segmentInfo := &datapb.SegmentInfo{
-				ID:                  segment.SegmentID,
-				CollectionID:        segment.CollectionID,
-				PartitionID:         segment.PartitionID,
-				InsertChannel:       segment.GetDmChannel(),
-				State:               segment.GetSegmentState(),
-				CreatedByCompaction: segment.GetCreatedByCompaction(),
-				CompactionFrom:      recursiveCompactFrom,
-			}
-
-			delete(ob.waitingIndexQueue, segment.SegmentID)
-			ob.triggeredHandoffEvents[segment.SegmentID] = segmentInfo
-
-			log.Info("handoff segment, register to target")
-			ob.target.HandoffSegment(segmentInfo, segmentInfo.CompactionFrom...)
-		} else {
-			ob.waitingIndexQueue[segment.SegmentID] = segment
-			if len(ob.waitingIndexQueue) > waitIndexQueueSizeLimit {
-				log.Warn("waiting index queue size over limit",
-					zap.Int("queueSize", len(ob.waitingIndexQueue)),
-					zap.Int("queueSizeLimit", waitIndexQueueSizeLimit),
-				)
-			}
-		}
-
+		ob.triggeredHandoffEvents[segment.SegmentID] = segmentInfo
+		log.Info("HandoffObserver: handoff segment, register to target")
+		ob.target.HandoffSegment(segmentInfo, segmentInfo.CompactionFrom...)
 	} else {
 		// ignore handoff task
 		log.Debug("handoff event trigger failed due to collection/partition is not loaded!")
@@ -189,7 +180,7 @@ func (ob *HandoffObserver) tryHandoff(ctx context.Context, segment *querypb.Segm
 
 }
 
-func (ob *HandoffObserver) IsSegmentReleased(id typeutil.UniqueID) bool {
+func (ob *HandoffObserver) isSegmentReleased(id typeutil.UniqueID) bool {
 	return len(ob.dist.LeaderViewManager.GetSegmentDist(id)) == 0
 }
 
@@ -242,12 +233,18 @@ func (ob *HandoffObserver) tryRelease() {
 	ob.handoffEventLock.Lock()
 	defer ob.handoffEventLock.Unlock()
 	for _, segment := range ob.triggeredHandoffEvents {
-		if ob.isSealedSegmentLoaded(segment) {
+		if ob.meta.GetStatus(segment.GetCollectionID()) != querypb.LoadStatus_Invalid &&
+			(ob.isSealedSegmentLoaded(segment) || !ob.isSegmentExistOnTarget(segment)) {
 			compactSource := segment.CompactionFrom
 
 			for _, toRelease := range compactSource {
 				// when handoff happens between growing and sealed, both with same segment id, so can't remove from target here
 				if segment.CreatedByCompaction {
+					log.Info("HandoffObserver: remove compactFrom segment",
+						zap.Int64("collectionID", segment.CollectionID),
+						zap.Int64("partitionID", segment.PartitionID),
+						zap.Int64("compactedSegment", segment.ID),
+						zap.Int64("toReleaseSegment", toRelease))
 					ob.target.RemoveSegment(toRelease)
 				}
 			}
@@ -259,7 +256,11 @@ func (ob *HandoffObserver) tryClean(ctx context.Context) {
 	ob.handoffEventLock.Lock()
 	defer ob.handoffEventLock.Unlock()
 	for _, segment := range ob.triggeredHandoffEvents {
-		if !ob.isSegmentExistOnTarget(segment) || ob.isAllCompactFromReleased(segment) {
+		if ob.isAllCompactFromReleased(segment) {
+			log.Info("HandoffObserver: clean handoff event after handoff finished!",
+				zap.Int64("collectionID", segment.CollectionID),
+				zap.Int64("partitionID", segment.PartitionID),
+				zap.Int64("segmentID", segment.ID))
 			err := ob.cleanEvent(ctx, segment)
 			if err == nil {
 				delete(ob.triggeredHandoffEvents, segment.ID)
@@ -273,15 +274,15 @@ func (ob *HandoffObserver) isSegmentExistOnTarget(segmentInfo *datapb.SegmentInf
 }
 
 func (ob *HandoffObserver) isAllCompactFromReleased(segmentInfo *datapb.SegmentInfo) bool {
-	for _, segment := range segmentInfo.CompactionFrom {
-		if segmentInfo.CreatedByCompaction {
-			if !ob.IsSegmentReleased(segment) {
+	if segmentInfo.CreatedByCompaction {
+		for _, segment := range segmentInfo.CompactionFrom {
+			if !ob.isSegmentReleased(segment) {
 				return false
 			}
-		} else {
-			if !ob.isGrowingSegmentReleased(segment) {
-				return false
-			}
+		}
+	} else {
+		if !ob.isGrowingSegmentReleased(segmentInfo.ID) {
+			return false
 		}
 	}
 

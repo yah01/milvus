@@ -158,6 +158,67 @@ func (_c *MockStore_GetReplicas_Call) Return(_a0 []*querypb.Replica, _a1 error) 
 	return _c
 }
 
+// LoadHandoffWithRevision provides a mock function with given fields:
+func (_m *MockStore) LoadHandoffWithRevision() ([]string, []string, int64, error) {
+	ret := _m.Called()
+
+	var r0 []string
+	if rf, ok := ret.Get(0).(func() []string); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+
+	var r1 []string
+	if rf, ok := ret.Get(1).(func() []string); ok {
+		r1 = rf()
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).([]string)
+		}
+	}
+
+	var r2 int64
+	if rf, ok := ret.Get(2).(func() int64); ok {
+		r2 = rf()
+	} else {
+		r2 = ret.Get(2).(int64)
+	}
+
+	var r3 error
+	if rf, ok := ret.Get(3).(func() error); ok {
+		r3 = rf()
+	} else {
+		r3 = ret.Error(3)
+	}
+
+	return r0, r1, r2, r3
+}
+
+// MockStore_LoadHandoffWithRevision_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'LoadHandoffWithRevision'
+type MockStore_LoadHandoffWithRevision_Call struct {
+	*mock.Call
+}
+
+// LoadHandoffWithRevision is a helper method to define mock.On call
+func (_e *MockStore_Expecter) LoadHandoffWithRevision() *MockStore_LoadHandoffWithRevision_Call {
+	return &MockStore_LoadHandoffWithRevision_Call{Call: _e.mock.On("LoadHandoffWithRevision")}
+}
+
+func (_c *MockStore_LoadHandoffWithRevision_Call) Run(run func()) *MockStore_LoadHandoffWithRevision_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockStore_LoadHandoffWithRevision_Call) Return(_a0 []string, _a1 []string, _a2 int64, _a3 error) *MockStore_LoadHandoffWithRevision_Call {
+	_c.Call.Return(_a0, _a1, _a2, _a3)
+	return _c
+}
+
 // ReleaseCollection provides a mock function with given fields: id
 func (_m *MockStore) ReleaseCollection(id int64) error {
 	ret := _m.Called(id)

@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
+
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
@@ -20,8 +23,6 @@ import (
 	"github.com/milvus-io/milvus/internal/querycoordv2/task"
 	"github.com/milvus-io/milvus/internal/util/dependency"
 	"github.com/milvus-io/milvus/internal/util/etcd"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/suite"
 )
 
 type ServerSuite struct {
@@ -290,14 +291,7 @@ func (suite *ServerSuite) hackServer() {
 		suite.server.cluster,
 		suite.server.nodeMgr,
 	)
-	suite.server.handoffObserver = observers.NewHandoffObserver(
-		suite.server.ctx,
-		suite.server.store,
-		suite.server.meta,
-		suite.server.dist,
-		suite.server.targetMgr,
-		suite.broker,
-	)
+	suite.server.handoffObserver = observers.NewHandoffObserver(suite.server.store, suite.server.meta, suite.server.dist, suite.server.targetMgr)
 	suite.server.distController = dist.NewDistController(
 		suite.server.cluster,
 		suite.server.nodeMgr,

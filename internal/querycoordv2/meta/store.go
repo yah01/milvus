@@ -34,6 +34,7 @@ type WatchStoreChan = clientv3.WatchChan
 type Store interface {
 	metastore.QueryCoordCatalog
 	WatchHandoffEvent(revision int64) WatchStoreChan
+	LoadHandoffWithRevision() ([]string, []string, int64, error)
 }
 
 type metaStore struct {
@@ -255,6 +256,10 @@ func (s metaStore) WatchHandoffEvent(revision int64) WatchStoreChan {
 func (s metaStore) RemoveHandoffEvent(info *datapb.SegmentInfo) error {
 	key := encodeHandoffEventKey(info.CollectionID, info.PartitionID, info.ID)
 	return s.cli.Remove(key)
+}
+
+func (s metaStore) LoadHandoffWithRevision() ([]string, []string, int64, error) {
+	return s.cli.LoadWithRevision(util.HandoffSegmentPrefix)
 }
 
 func encodeCollectionLoadInfoKey(collection int64) string {
