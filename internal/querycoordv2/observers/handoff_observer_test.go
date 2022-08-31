@@ -100,7 +100,6 @@ func (suite *HandoffObserverTestSuit) SetupTest() {
 	// Test Object
 	suite.observer = NewHandoffObserver(suite.store, suite.meta, suite.dist, suite.target)
 	suite.load()
-
 }
 
 func (suite *HandoffObserverTestSuit) TearDownTest() {
@@ -201,8 +200,6 @@ func (suite *HandoffObserverTestSuit) TestCompactHandoff() {
 		Channel:      suite.channel.ChannelName,
 		Segments:     map[int64]int64{1: 1, 2: 2, 3: 3},
 	})
-
-	log.Info("update load view", zap.Int("views", len(suite.dist.LeaderViewManager.GetLeaderView(2))))
 
 	suite.Eventually(func() bool {
 		log.Info("", zap.Bool("contains", suite.target.ContainSegment(1)))
@@ -430,6 +427,63 @@ func (suite *HandoffObserverTestSuit) load() {
 	suite.target.AddSegment(suite.sealedSegments...)
 }
 
+
+func (suite *HandoffObserverTestSuit) TestHandoffOnUnLoadedPartition() {
+	const (
+		collectionID        = 111
+		loadedPartitionID   = 1
+		unloadedPartitionID = 2
+	)
+	err := suite.meta.PutPartition(&meta.Partition{
+		PartitionLoadInfo: &querypb.PartitionLoadInfo{
+			CollectionID:  collectionID,
+			PartitionID:   loadedPartitionID,
+			ReplicaNumber: suite.replicaNumber,
+			Status:        querypb.LoadStatus_Loaded,
+		},
+	})
+	suite.NoError(err)
+
+	// init leader view
+	suite.dist.LeaderViewManager.Update(2, &meta.LeaderView{
+		ID:           1,
+		CollectionID: collectionID,
+		Channel:      suite.channel.ChannelName,
+		Segments:     map[int64]int64{1: 1, 2: 2},
+	})
+
+	Params.QueryCoordCfg.CheckHandoffInterval = 1 * time.Second
+	err = suite.observer.Start(context.Background())
+	suite.NoError(err)
+
+	compactSegment := &querypb.SegmentInfo{
+		SegmentID:           3,
+		CollectionID:        collectionID,
+		PartitionID:         unloadedPartitionID,
+		SegmentState:        commonpb.SegmentState_Sealed,
+		CompactionFrom:      []int64{2},
+		CreatedByCompaction: true,
+	}
+	suite.produceHandOffEvent(compactSegment)
+
+	suite.Eventually(func() bool {
+		log.Info("", zap.Bool("contains", suite.target.ContainSegment(3)))
+		return !suite.target.ContainSegment(3)
+	}, 3*time.Second, 1*time.Second)
+
+	suite.Eventually(func() bool {
+		log.Info("", zap.Bool("contains", suite.target.ContainSegment(1)))
+		return suite.target.ContainSegment(1) && suite.target.ContainSegment(2)
+	}, 3*time.Second, 1*time.Second)
+
+	suite.Eventually(func() bool {
+		key := fmt.Sprintf("%s/%d/%d/%d", util.HandoffSegmentPrefix, suite.collection, suite.partition, 3)
+		value, err := suite.kv.Load(key)
+		return len(value) == 0 && err != nil
+	}, 3*time.Second, 1*time.Second)
+}
+
 func TestHandoffObserverSuit(t *testing.T) {
 	suite.Run(t, new(HandoffObserverTestSuit))
 }
+

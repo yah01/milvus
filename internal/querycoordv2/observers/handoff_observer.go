@@ -142,7 +142,7 @@ func (ob *HandoffObserver) tryHandoff(ctx context.Context, segment *querypb.Segm
 		zap.Int64("partitionID", segment.PartitionID),
 		zap.Int64("segmentID", segment.SegmentID))
 
-	if Params.QueryCoordCfg.AutoHandoff && ob.meta.Exist(segment.GetCollectionID()) {
+	if Params.QueryCoordCfg.AutoHandoff && (ob.meta.GetCollection(segment.CollectionID) != nil || ob.meta.GetPartition(segment.PartitionID) != nil) {
 		targets := ob.target.GetSegmentsByCollection(segment.GetCollectionID(), segment.GetPartitionID())
 		// when handoff event load a segment, it sobuld remove all recursive handoff compact from
 		uniqueSet := typeutil.NewUniqueSet()
