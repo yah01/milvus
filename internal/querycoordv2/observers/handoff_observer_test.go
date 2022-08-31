@@ -397,10 +397,6 @@ func (suite *HandoffObserverTestSuit) TestLoadHandoffEventFromStore() {
 	}, 3*time.Second, 1*time.Second)
 }
 
-func TestHandoffObserverSuit(t *testing.T) {
-	suite.Run(t, new(HandoffObserverTestSuit))
-}
-
 func (suite *HandoffObserverTestSuit) produceHandOffEvent(segmentInfo *querypb.SegmentInfo) {
 	key := fmt.Sprintf("%s/%d/%d/%d", util.HandoffSegmentPrefix, segmentInfo.CollectionID, segmentInfo.PartitionID, segmentInfo.SegmentID)
 	value, err := proto.Marshal(segmentInfo)
@@ -432,4 +428,8 @@ func (suite *HandoffObserverTestSuit) load() {
 
 	suite.target.AddDmChannel(suite.channel)
 	suite.target.AddSegment(suite.sealedSegments...)
+}
+
+func TestHandoffObserverSuit(t *testing.T) {
+	suite.Run(t, new(HandoffObserverTestSuit))
 }

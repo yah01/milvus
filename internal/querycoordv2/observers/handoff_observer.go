@@ -214,9 +214,11 @@ func (ob *HandoffObserver) getOverrideSegmentInfo(handOffSegments []*datapb.Segm
 }
 
 func (ob *HandoffObserver) cleanEvent(ctx context.Context, segmentInfo *datapb.SegmentInfo) error {
-	log := log.With(zap.Int64("collectionID", segmentInfo.CollectionID),
+	log := log.With(
+		zap.Int64("collectionID", segmentInfo.CollectionID),
 		zap.Int64("partitionID", segmentInfo.PartitionID),
-		zap.Int64("segmentID", segmentInfo.ID))
+		zap.Int64("segmentID", segmentInfo.ID),
+	)
 
 	// add retry logic
 	err := retry.Do(ctx, func() error {
@@ -244,7 +246,8 @@ func (ob *HandoffObserver) tryRelease() {
 						zap.Int64("collectionID", segment.CollectionID),
 						zap.Int64("partitionID", segment.PartitionID),
 						zap.Int64("compactedSegment", segment.ID),
-						zap.Int64("toReleaseSegment", toRelease))
+						zap.Int64("toReleaseSegment", toRelease),
+					)
 					ob.target.RemoveSegment(toRelease)
 				}
 			}
@@ -260,7 +263,8 @@ func (ob *HandoffObserver) tryClean(ctx context.Context) {
 			log.Info("HandoffObserver: clean handoff event after handoff finished!",
 				zap.Int64("collectionID", segment.CollectionID),
 				zap.Int64("partitionID", segment.PartitionID),
-				zap.Int64("segmentID", segment.ID))
+				zap.Int64("segmentID", segment.ID),
+			)
 			err := ob.cleanEvent(ctx, segment)
 			if err == nil {
 				delete(ob.triggeredHandoffEvents, segment.ID)
@@ -274,17 +278,14 @@ func (ob *HandoffObserver) isSegmentExistOnTarget(segmentInfo *datapb.SegmentInf
 }
 
 func (ob *HandoffObserver) isAllCompactFromReleased(segmentInfo *datapb.SegmentInfo) bool {
-	if segmentInfo.CreatedByCompaction {
-		for _, segment := range segmentInfo.CompactionFrom {
-			if !ob.isSegmentReleased(segment) {
-				return false
-			}
-		}
-	} else {
-		if !ob.isGrowingSegmentReleased(segmentInfo.ID) {
+	if !segmentInfo.CreatedByCompaction {
+		return !ob.isGrowingSegmentReleased(segmentInfo.ID)
+	}
+
+	for _, segment := range segmentInfo.CompactionFrom {
+		if !ob.isSegmentReleased(segment) {
 			return false
 		}
 	}
-
 	return true
 }
