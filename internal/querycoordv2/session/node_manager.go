@@ -63,13 +63,6 @@ func (n *NodeInfo) Addr() string {
 	return n.addr
 }
 
-func (n *NodeInfo) Remaining() int64 {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-
-	return n.stats.getRemaining()
-}
-
 func (n *NodeInfo) SegmentCnt() int {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
@@ -90,26 +83,6 @@ func (n *NodeInfo) UpdateStats(opts ...StatsOption) {
 	n.mu.Unlock()
 }
 
-// PreAllocate allocates space and return the result and cleaner.
-// Caller should call the cleaner after the related task completes.
-func (n *NodeInfo) PreAllocate(space int64) (bool, func()) {
-	n.mu.Lock()
-	succ := n.preAllocate(space)
-	n.mu.Unlock()
-	isReleased := false
-	return succ, func() {
-		if !isReleased {
-			n.releaseAllocation(space)
-		}
-	}
-}
-
-func (n *NodeInfo) releaseAllocation(space int64) {
-	n.mu.Lock()
-	n.release(space)
-	n.mu.Unlock()
-}
-
 func NewNodeInfo(id int64, addr string) *NodeInfo {
 	return &NodeInfo{
 		stats: newStats(),
@@ -119,18 +92,6 @@ func NewNodeInfo(id int64, addr string) *NodeInfo {
 }
 
 type StatsOption func(*NodeInfo)
-
-func WithCapacity(cap int64) StatsOption {
-	return func(n *NodeInfo) {
-		n.setCapacity(cap)
-	}
-}
-
-func WithAvailable(available int64) StatsOption {
-	return func(n *NodeInfo) {
-		n.setAvailable(available)
-	}
-}
 
 func WithSegmentCnt(cnt int) StatsOption {
 	return func(n *NodeInfo) {
