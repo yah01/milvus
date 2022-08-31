@@ -189,8 +189,8 @@ func (ob *HandoffObserver) tryHandoff(ctx context.Context, segment *querypb.Segm
 
 }
 
-func (ob *HandoffObserver) isSealedSegmentReleased(id typeutil.UniqueID) bool {
-	return len(ob.dist.LeaderViewManager.GetSealedSegmentDist(id)) == 0
+func (ob *HandoffObserver) IsSegmentReleased(id typeutil.UniqueID) bool {
+	return len(ob.dist.LeaderViewManager.GetSegmentDist(id)) == 0
 }
 
 func (ob *HandoffObserver) isGrowingSegmentReleased(id typeutil.UniqueID) bool {
@@ -275,7 +275,7 @@ func (ob *HandoffObserver) isSegmentExistOnTarget(segmentInfo *datapb.SegmentInf
 func (ob *HandoffObserver) isAllCompactFromReleased(segmentInfo *datapb.SegmentInfo) bool {
 	for _, segment := range segmentInfo.CompactionFrom {
 		if segmentInfo.CreatedByCompaction {
-			if !ob.isSealedSegmentReleased(segment) {
+			if !ob.IsSegmentReleased(segment) {
 				return false
 			}
 		} else {
