@@ -541,6 +541,8 @@ func (s *Server) handleNodeDown(node int64) {
 	s.distController.Remove(node)
 
 	// Refresh the targets, to avoid consuming messages too early from channel
+	// FIXME(yah01): the leads to miss data, the segments flushed between the two check points
+	// are missed, it will recover for a while.
 	channels := s.dist.ChannelDistManager.GetByNode(node)
 	for _, channel := range channels {
 		partitions, err := utils.GetPartitions(s.meta.CollectionManager,

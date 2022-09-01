@@ -646,6 +646,16 @@ func (s *Server) GetShardLeaders(ctx context.Context, req *querypb.GetShardLeade
 			if info == nil {
 				continue
 			}
+			isAllNodeAvailable := true
+			for _, node := range leader.Segments {
+				if s.nodeMgr.Get(node) == nil {
+					isAllNodeAvailable = false
+					break
+				}
+			}
+			if !isAllNodeAvailable {
+				continue
+			}
 			ids = append(ids, info.ID())
 			addrs = append(addrs, info.Addr())
 		}
