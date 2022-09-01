@@ -427,7 +427,6 @@ func (suite *HandoffObserverTestSuit) load() {
 	suite.target.AddSegment(suite.sealedSegments...)
 }
 
-
 func (suite *HandoffObserverTestSuit) TestHandoffOnUnLoadedPartition() {
 	const (
 		collectionID        = 111
@@ -486,4 +485,3 @@ func (suite *HandoffObserverTestSuit) TestHandoffOnUnLoadedPartition() {
 func TestHandoffObserverSuit(t *testing.T) {
 	suite.Run(t, new(HandoffObserverTestSuit))
 }
-
