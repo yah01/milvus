@@ -620,11 +620,10 @@ func (s *Server) GetShardLeaders(ctx context.Context, req *querypb.GetShardLeade
 		Status: successStatus,
 	}
 
-	if s.meta.CollectionManager.GetLoadPercentage(req.GetCollectionID()) != 100 {
+	if s.meta.CollectionManager.GetLoadPercentage(req.GetCollectionID()) < 100 {
 		msg := fmt.Sprintf("collection %v is not fully loaded", req.GetCollectionID())
 		log.Warn(msg)
 		resp.Status = utils.WrapStatus(commonpb.ErrorCode_NoReplicaAvailable, msg)
-		resp.Shards = nil
 		return resp, nil
 	}
 

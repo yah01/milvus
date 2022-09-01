@@ -115,7 +115,7 @@ func SpawnReplicas(replicaMgr *meta.ReplicaManager, nodeMgr *session.NodeManager
 func RegisterTargets(ctx context.Context,
 	targetMgr *meta.TargetManager,
 	broker meta.Broker,
-	collection int64, partitions ...int64) error {
+	collection int64, partitions []int64) error {
 	dmChannels := make(map[string][]*datapb.VchannelInfo)
 
 	for _, partitionID := range partitions {

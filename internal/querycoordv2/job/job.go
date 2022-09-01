@@ -194,7 +194,7 @@ func (job *LoadCollectionJob) Execute() error {
 		job.targetMgr,
 		job.broker,
 		req.GetCollectionID(),
-		partitions...)
+		partitions)
 	if err != nil {
 		msg := "failed to register channels and segments"
 		log.Error(msg, zap.Error(err))
@@ -389,7 +389,7 @@ func (job *LoadPartitionJob) Execute() error {
 		job.targetMgr,
 		job.broker,
 		req.GetCollectionID(),
-		req.GetPartitionIDs()...)
+		req.GetPartitionIDs())
 	if err != nil {
 		msg := "failed to register channels and segments"
 		log.Error(msg, zap.Error(err))

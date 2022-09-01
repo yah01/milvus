@@ -458,7 +458,7 @@ func (s *Server) recoverCollectionTargets(ctx context.Context, collection int64)
 		s.targetMgr,
 		s.broker,
 		collection,
-		partitions...,
+		partitions,
 	)
 	return err
 }
@@ -539,6 +539,29 @@ func (s *Server) handleNodeUp(node int64) {
 func (s *Server) handleNodeDown(node int64) {
 	log := log.With(zap.Int64("nodeID", node))
 	s.distController.Remove(node)
+
+	// Refresh the targets, to avoid consuming messages too early from channel
+	channels := s.dist.ChannelDistManager.GetByNode(node)
+	for _, channel := range channels {
+		partitions, err := utils.GetPartitions(s.meta.CollectionManager,
+			s.broker,
+			channel.GetCollectionID())
+		if err != nil {
+			log.Warn("failed to refresh targets of collection",
+				zap.Int64("collectionID", channel.GetCollectionID()),
+				zap.Error(err))
+		}
+		err = utils.RegisterTargets(s.ctx,
+			s.targetMgr,
+			s.broker,
+			channel.GetCollectionID(),
+			partitions)
+		if err != nil {
+			log.Warn("failed to refresh targets of collection",
+				zap.Int64("collectionID", channel.GetCollectionID()),
+				zap.Error(err))
+		}
+	}
 
 	// Clear dist
 	s.dist.LeaderViewManager.Update(node)

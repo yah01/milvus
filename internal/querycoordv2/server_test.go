@@ -37,8 +37,7 @@ type ServerSuite struct {
 	replicaNumber map[int64]int32
 
 	// Mocks
-	broker        *meta.MockBroker
-	taskScheduler *task.MockScheduler
+	broker *meta.MockBroker
 
 	server *Server
 	nodes  []*mocks.MockQueryNode
