@@ -521,14 +521,17 @@ func (s *Server) handleNodeUp(node int64) {
 			sort.Slice(replicas, func(i, j int) bool {
 				return replicas[i].Nodes.Len() < replicas[j].Nodes.Len()
 			})
+			replica := replicas[0]
 			// TODO(yah01): this may fail, need a component to check whether a node is assigned
-			err := s.meta.ReplicaManager.AddNode(replicas[0].GetID(), node)
+			err := s.meta.ReplicaManager.AddNode(replica.GetID(), node)
 			if err != nil {
-				log.Warn("failed to assign node to collection's replicas",
+				log.Warn("failed to assign node to replicas",
 					zap.Int64("replicaID", replica.GetID()),
 					zap.Error(err),
 				)
 			}
+			log.Info("assign node to replica",
+				zap.Int64("replicaID", replica.GetID()))
 		}
 	}
 }
@@ -556,6 +559,8 @@ func (s *Server) handleNodeDown(node int64) {
 				zap.Error(err),
 			)
 		}
+		log.Info("remove node from replica",
+			zap.Int64("replicaID", replica.GetID()))
 	}
 
 	// Clear tasks

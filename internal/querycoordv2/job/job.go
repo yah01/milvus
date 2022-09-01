@@ -151,12 +151,12 @@ func (job *LoadCollectionJob) Execute() error {
 	req := job.req
 	log := log.With(
 		zap.Int64("msgID", req.GetBase().GetMsgID()),
-		zap.Int64("collection", req.GetCollectionID()),
+		zap.Int64("collectionID", req.GetCollectionID()),
 	)
 
 	// Create replicas
 	// TODO(yah01): store replicas and collection atomically
-	err := utils.SpawnReplicas(job.meta.ReplicaManager,
+	replicas, err := utils.SpawnReplicas(job.meta.ReplicaManager,
 		job.nodeMgr,
 		req.GetCollectionID(),
 		req.GetReplicaNumber())
@@ -164,6 +164,11 @@ func (job *LoadCollectionJob) Execute() error {
 		msg := "failed to spawn replica for collection"
 		log.Error(msg, zap.Error(err))
 		return utils.WrapError(msg, err)
+	}
+	for _, replica := range replicas {
+		log.Info("replica created",
+			zap.Int64("replicaID", replica.GetID()),
+			zap.Int64s("nodes", replica.GetNodes()))
 	}
 
 	// Fetch channels and segments from DataCoord
@@ -243,7 +248,7 @@ func (job *ReleaseCollectionJob) Execute() error {
 	req := job.req
 	log := log.With(
 		zap.Int64("msgID", req.GetBase().GetMsgID()),
-		zap.Int64("collection", req.GetCollectionID()),
+		zap.Int64("collectionID", req.GetCollectionID()),
 	)
 	if !job.meta.CollectionManager.Exist(req.GetCollectionID()) {
 		log.Info("release collection end, the collection has not been loaded into QueryNode")
@@ -304,7 +309,7 @@ func (job *LoadPartitionJob) PreExecute() error {
 	req := job.req
 	log := log.With(
 		zap.Int64("msgID", req.Base.GetMsgID()),
-		zap.Int64("collection", req.GetCollectionID()),
+		zap.Int64("collectionID", req.GetCollectionID()),
 	)
 
 	if req.GetReplicaNumber() <= 0 {
@@ -347,12 +352,12 @@ func (job *LoadPartitionJob) Execute() error {
 	req := job.req
 	log := log.With(
 		zap.Int64("msgID", req.GetBase().GetMsgID()),
-		zap.Int64("collection", req.GetCollectionID()),
+		zap.Int64("collectionID", req.GetCollectionID()),
 	)
 
 	// Create replicas
 	// TODO(yah01): store replicas and collection atomically
-	err := utils.SpawnReplicas(job.meta.ReplicaManager,
+	replicas, err := utils.SpawnReplicas(job.meta.ReplicaManager,
 		job.nodeMgr,
 		req.GetCollectionID(),
 		req.GetReplicaNumber())
@@ -360,6 +365,11 @@ func (job *LoadPartitionJob) Execute() error {
 		msg := "failed to spawn replica for collection"
 		log.Error(msg, zap.Error(err))
 		return utils.WrapError(msg, err)
+	}
+	for _, replica := range replicas {
+		log.Info("replica created",
+			zap.Int64("replicaID", replica.GetID()),
+			zap.Int64s("nodes", replica.GetNodes()))
 	}
 
 	partitions := lo.Map(req.GetPartitionIDs(), func(partition int64, _ int) *meta.Partition {
@@ -445,7 +455,7 @@ func (job *ReleasePartitionJob) Execute() error {
 	req := job.req
 	log := log.With(
 		zap.Int64("msgID", req.GetBase().GetMsgID()),
-		zap.Int64("collection", req.GetCollectionID()),
+		zap.Int64("collectionID", req.GetCollectionID()),
 	)
 
 	if !job.meta.CollectionManager.Exist(req.GetCollectionID()) {

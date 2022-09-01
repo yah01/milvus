@@ -101,13 +101,13 @@ func AssignNodesToReplicas(nodeMgr *session.NodeManager, replicas ...*meta.Repli
 }
 
 // SpawnReplicas spawns replicas for given collection, assign nodes to them, and save them
-func SpawnReplicas(replicaMgr *meta.ReplicaManager, nodeMgr *session.NodeManager, collection int64, replicaNumber int32) error {
+func SpawnReplicas(replicaMgr *meta.ReplicaManager, nodeMgr *session.NodeManager, collection int64, replicaNumber int32) ([]*meta.Replica, error) {
 	replicas, err := replicaMgr.Spawn(collection, replicaNumber)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	AssignNodesToReplicas(nodeMgr, replicas...)
-	return replicaMgr.Put(replicas...)
+	return replicas, replicaMgr.Put(replicas...)
 }
 
 // RegisterTargets fetch channels and segments of given collection(partitions) from DataCoord,

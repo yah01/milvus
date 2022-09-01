@@ -170,18 +170,19 @@ func (suite *TaskSuite) TestSubscribeChannelTask() {
 				},
 			}, nil)
 	}
-	for _, partition := range partitions {
-		suite.broker.EXPECT().GetRecoveryInfo(mock.Anything, suite.collection, partition).
-			Return(channels, nil, nil)
-	}
+	// for _, partition := range partitions {
+	// 	suite.broker.EXPECT().GetRecoveryInfo(mock.Anything, suite.collection, partition).
+	// 		Return(channels, nil, nil)
+	// }
 	suite.cluster.EXPECT().WatchDmChannels(mock.Anything, targetNode, mock.Anything).Return(utils.WrapStatus(commonpb.ErrorCode_Success, ""), nil)
 
 	// Test subscribe channel task
 	tasks := []Task{}
 	for _, channel := range suite.subChannels {
 		suite.target.AddDmChannel(meta.DmChannelFromVChannel(&datapb.VchannelInfo{
-			CollectionID: suite.collection,
-			ChannelName:  channel,
+			CollectionID:        suite.collection,
+			ChannelName:         channel,
+			UnflushedSegmentIds: []int64{suite.growingSegments[channel]},
 		}))
 		task := NewChannelTask(
 			ctx,
