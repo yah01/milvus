@@ -89,7 +89,7 @@ func packReleaseSegmentRequest(task *SegmentTask, action *SegmentAction, shard s
 		SegmentIDs:   []int64{task.SegmentID()},
 		Shard:        shard,
 		Scope:        action.Scope(),
-		NeedTransfer: true,
+		NeedTransfer: false,
 	}
 }
 
