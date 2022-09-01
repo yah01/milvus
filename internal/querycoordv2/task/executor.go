@@ -7,7 +7,6 @@ import (
 
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
-	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
 	"github.com/milvus-io/milvus/internal/querycoordv2/session"
 	"github.com/milvus-io/milvus/internal/querycoordv2/utils"
@@ -253,26 +252,29 @@ func (ex *Executor) subDmChannel(task *ChannelTask, action *ChannelAction) {
 		task.CollectionID(),
 		partitions...,
 	)
-	channels := make([]*datapb.VchannelInfo, 0, len(partitions))
-	for _, partition := range partitions {
-		vchannels, _, err := ex.broker.GetRecoveryInfo(ctx, task.CollectionID(), partition)
-		if err != nil {
-			log.Warn("failed to get vchannel from DataCoord", zap.Error(err))
-			return
-		}
+	// DO NOT fetch channel info from DataCoord here,
+	// that may lead to leaking some data
+	// channels := make([]*datapb.VchannelInfo, 0, len(partitions))
+	// for _, partition := range partitions {
+	// 	vchannels, _, err := ex.broker.GetRecoveryInfo(ctx, task.CollectionID(), partition)
+	// 	if err != nil {
+	// 		log.Warn("failed to get vchannel from DataCoord", zap.Error(err))
+	// 		return
+	// 	}
 
-		for _, channel := range vchannels {
-			if channel.ChannelName == action.ChannelName() {
-				channels = append(channels, channel)
-			}
-		}
-	}
-	if len(channels) == 0 {
-		log.Warn("no such channel in DataCoord")
-		return
-	}
+	// 	for _, channel := range vchannels {
+	// 		if channel.ChannelName == action.ChannelName() {
+	// 			channels = append(channels, channel)
+	// 		}
+	// 	}
+	// }
+	// if len(channels) == 0 {
+	// 	log.Warn("no such channel in DataCoord")
+	// 	return
+	// }
 
-	dmChannel := utils.MergeDmChannelInfo(channels)
+	// dmChannel := utils.MergeDmChannelInfo(channels)
+	dmChannel := ex.targetMgr.GetDmChannel(action.ChannelName())
 	req := packSubDmChannelRequest(task, action, schema, loadMeta, dmChannel)
 	err = fillSubDmChannelRequest(ctx, req, ex.broker)
 	if err != nil {
