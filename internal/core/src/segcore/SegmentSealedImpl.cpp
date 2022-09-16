@@ -10,6 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
 #include "SegmentSealedImpl.h"
+
 #include "common/Consts.h"
 #include "query/SearchBruteForce.h"
 #include "query/SearchOnSealed.h"
@@ -642,7 +643,7 @@ SegmentSealedImpl::search_ids(const IdArray& id_array, Timestamp timestamp) cons
 
     auto res_id_arr = std::make_unique<IdArray>();
     std::vector<SegOffset> res_offsets;
-    for (auto pk : pks) {
+    for (const auto& pk : pks) {
         auto segOffsets = insert_record_.search_pk(pk, timestamp);
         for (auto offset : segOffsets) {
             switch (data_type) {
