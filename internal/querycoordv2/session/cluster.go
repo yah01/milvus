@@ -30,6 +30,7 @@ func WrapErrNodeNotFound(nodeID int64) error {
 }
 
 type Cluster interface {
+	ReleasePartition(ctx context.Context, nodeID int64, req *querypb.ReleasePartitionsRequest) (*commonpb.Status, error)
 	WatchDmChannels(ctx context.Context, nodeID int64, req *querypb.WatchDmChannelsRequest) (*commonpb.Status, error)
 	UnsubDmChannel(ctx context.Context, nodeID int64, req *querypb.UnsubDmChannelRequest) (*commonpb.Status, error)
 	LoadSegments(ctx context.Context, nodeID int64, req *querypb.LoadSegmentsRequest) (*commonpb.Status, error)
@@ -86,6 +87,20 @@ func (c *QueryCluster) updateLoop() {
 			}
 		}
 	}
+}
+
+func (c *QueryCluster) ReleasePartition(ctx context.Context, nodeID int64, req *querypb.ReleasePartitionsRequest) (*commonpb.Status, error) {
+	var (
+		status *commonpb.Status
+		err    error
+	)
+	err1 := c.send(ctx, nodeID, func(cli *grpcquerynodeclient.Client) {
+		status, err = cli.ReleasePartitions(ctx, req)
+	})
+	if err1 != nil {
+		return nil, err1
+	}
+	return status, err
 }
 
 func (c *QueryCluster) LoadSegments(ctx context.Context, nodeID int64, req *querypb.LoadSegmentsRequest) (*commonpb.Status, error) {

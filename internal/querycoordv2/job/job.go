@@ -434,6 +434,7 @@ type ReleasePartitionJob struct {
 	dist            *meta.DistributionManager
 	meta            *meta.Meta
 	targetMgr       *meta.TargetManager
+	cluster         session.Cluster
 	handoffObserver *observers.HandoffObserver
 }
 
@@ -509,6 +510,11 @@ func (job *ReleasePartitionJob) Execute() error {
 		}
 		for _, partition := range toRelease {
 			job.targetMgr.RemovePartition(partition)
+		}
+
+		channels := job.dist.ChannelDistManager.GetByCollection(job.CollectionID())
+		for _, channel := range channels {
+			job.cluster.ReleasePartition(job.ctx, channel.Node, req)
 		}
 		waitCollectionReleased(job.dist, req.GetCollectionID(), toRelease...)
 	}
