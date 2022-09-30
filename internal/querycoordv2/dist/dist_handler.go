@@ -88,7 +88,7 @@ func (dh *distHandler) logFailureInfo(resp *querypb.GetDataDistributionResponse,
 }
 
 func (dh *distHandler) handleDistResp(resp *querypb.GetDataDistributionResponse) {
-	node := dh.nodeManager.Get(resp.GetNodeID())
+	node := dh.nodeManager.Get(dh.nodeID)
 	if node != nil {
 		node.UpdateStats(
 			session.WithSegmentCnt(len(resp.GetSegments())),
