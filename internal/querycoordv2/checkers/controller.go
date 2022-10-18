@@ -27,6 +27,7 @@ import (
 	. "github.com/milvus-io/milvus/internal/querycoordv2/params"
 	"github.com/milvus-io/milvus/internal/querycoordv2/session"
 	"github.com/milvus-io/milvus/internal/querycoordv2/task"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"go.uber.org/zap"
 )
 
@@ -55,13 +56,38 @@ func NewCheckerController(
 	targetMgr *meta.TargetManager,
 	balancer balance.Balance,
 	scheduler task.Scheduler) *CheckerController {
-
 	// CheckerController runs checkers with the order,
 	// the former checker has higher priority
 	checkers := []Checker{
 		NewChannelChecker(meta, dist, targetMgr, balancer),
-		NewSegmentChecker(meta, dist, targetMgr, balancer),
+		NewSegmentChecker(meta, dist, targetMgr, balancer, paramtable.Spread),
 		NewBalanceChecker(balancer),
+	}
+	for i, checker := range checkers {
+		checker.SetID(int64(i + 1))
+	}
+
+	return &CheckerController{
+		stopCh:    make(chan struct{}),
+		meta:      meta,
+		dist:      dist,
+		targetMgr: targetMgr,
+		scheduler: scheduler,
+		checkers:  checkers,
+	}
+}
+
+func NewLighteningController(
+	meta *meta.Meta,
+	dist *meta.DistributionManager,
+	targetMgr *meta.TargetManager,
+	balancer balance.Balance,
+	scheduler task.Scheduler) *CheckerController {
+	// CheckerController runs checkers with the order,
+	// the former checker has higher priority
+	checkers := []Checker{
+		NewChannelChecker(meta, dist, targetMgr, balancer),
+		NewSegmentChecker(meta, dist, targetMgr, balancer, paramtable.Lightening),
 	}
 	for i, checker := range checkers {
 		checker.SetID(int64(i + 1))
@@ -92,7 +118,7 @@ func (controller *CheckerController) Start(ctx context.Context) {
 				return
 
 			case <-ticker.C:
-				controller.check(ctx)
+				controller.Check(ctx)
 			}
 		}
 	}()
@@ -104,8 +130,8 @@ func (controller *CheckerController) Stop() {
 	})
 }
 
-// check is the real implementation of Check
-func (controller *CheckerController) check(ctx context.Context) {
+// Check is the real implementation of Check
+func (controller *CheckerController) Check(ctx context.Context) {
 	tasks := make([]task.Task, 0)
 	for _, checker := range controller.checkers {
 		tasks = append(tasks, checker.Check(ctx)...)

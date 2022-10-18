@@ -53,6 +53,7 @@ import (
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/dependency"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
@@ -224,14 +225,25 @@ func (s *Server) Init() error {
 	)
 
 	// Init checker controller
-	log.Info("init checker controller")
-	s.checkerController = checkers.NewCheckerController(
-		s.meta,
-		s.dist,
-		s.targetMgr,
-		s.balancer,
-		s.taskScheduler,
-	)
+	log.Debug("init checker controller")
+	switch Params.QueryCoordCfg.DistributionMode {
+	case paramtable.Spread:
+		s.checkerController = checkers.NewCheckerController(
+			s.meta,
+			s.dist,
+			s.targetMgr,
+			s.balancer,
+			s.taskScheduler,
+		)
+	case paramtable.Lightening:
+		s.checkerController = checkers.NewLighteningController(
+			s.meta,
+			s.dist,
+			s.targetMgr,
+			s.balancer,
+			s.taskScheduler,
+		)
+	}
 
 	// Init observers
 	s.initObserver()

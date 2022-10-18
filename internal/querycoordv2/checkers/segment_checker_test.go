@@ -27,6 +27,7 @@ import (
 	"github.com/milvus-io/milvus/internal/querycoordv2/task"
 	"github.com/milvus-io/milvus/internal/querycoordv2/utils"
 	"github.com/milvus-io/milvus/internal/util/etcd"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
@@ -57,7 +58,7 @@ func (suite *SegmentCheckerTestSuite) SetupTest() {
 	targetManager := meta.NewTargetManager()
 
 	balancer := suite.createMockBalancer()
-	suite.checker = NewSegmentChecker(testMeta, distManager, targetManager, balancer)
+	suite.checker = NewSegmentChecker(testMeta, distManager, targetManager, balancer, paramtable.Spread)
 }
 
 func (suite *SegmentCheckerTestSuite) TearDownTest() {

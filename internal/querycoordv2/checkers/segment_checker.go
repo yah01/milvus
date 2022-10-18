@@ -27,6 +27,7 @@ import (
 	. "github.com/milvus-io/milvus/internal/querycoordv2/params"
 	"github.com/milvus-io/milvus/internal/querycoordv2/task"
 	"github.com/milvus-io/milvus/internal/querycoordv2/utils"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"go.uber.org/zap"
 )
@@ -37,6 +38,7 @@ type SegmentChecker struct {
 	dist      *meta.DistributionManager
 	targetMgr *meta.TargetManager
 	balancer  balance.Balance
+	mode      paramtable.DistributionMode
 }
 
 func NewSegmentChecker(
@@ -44,12 +46,14 @@ func NewSegmentChecker(
 	dist *meta.DistributionManager,
 	targetMgr *meta.TargetManager,
 	balancer balance.Balance,
+	mode paramtable.DistributionMode,
 ) *SegmentChecker {
 	return &SegmentChecker{
 		meta:      meta,
 		dist:      dist,
 		targetMgr: targetMgr,
 		balancer:  balancer,
+		mode:      mode,
 	}
 }
 
@@ -231,16 +235,32 @@ func (c *SegmentChecker) createSegmentLoadTasks(ctx context.Context, segments []
 		return nil
 	}
 	packedSegments := make([]*meta.Segment, 0, len(segments))
+	leaders := c.dist.ChannelDistManager.GetShardLeadersByReplica(replica)
 	for _, s := range segments {
-		if len(c.dist.LeaderViewManager.GetLeadersByShard(s.GetInsertChannel())) == 0 {
+		if _, ok := leaders[s.GetInsertChannel()]; !ok {
 			continue
 		}
 		packedSegments = append(packedSegments, &meta.Segment{SegmentInfo: s})
 	}
-	plans := c.balancer.AssignSegment(packedSegments, replica.Replica.GetNodes())
-	for i := range plans {
-		plans[i].ReplicaID = replica.GetID()
+	var plans []balance.SegmentAssignPlan
+	switch c.mode {
+	case paramtable.Spread:
+		plans = c.balancer.AssignSegment(packedSegments, replica.Replica.GetNodes())
+		for i := range plans {
+			plans[i].ReplicaID = replica.GetID()
+		}
+
+	case paramtable.Lightening:
+		for _, segment := range packedSegments {
+			plans = append(plans, balance.SegmentAssignPlan{
+				Segment:   segment,
+				ReplicaID: replica.GetID(),
+				From:      -1,
+				To:        leaders[segment.GetInsertChannel()],
+			})
+		}
 	}
+
 	return balance.CreateSegmentTasksFromPlans(ctx, c.ID(), Params.QueryCoordCfg.SegmentTaskTimeout, plans)
 }
 

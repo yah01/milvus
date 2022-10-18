@@ -65,7 +65,7 @@ mysql:
 
 # please adjust in embedded Milvus: /tmp/milvus/data/
 localStorage:
-  path: /var/lib/milvus/data/
+  path: ./var/lib/milvus/data/
 
 # Related configuration of MinIO/S3/GCS or any other service supports S3 API, which is responsible for data persistence for Milvus.
 # We refer to the storage service as MinIO/S3 in the following description for simplicity.
@@ -180,6 +180,7 @@ queryCoord:
   checkHandoffInterval: 5000
   taskMergeCap: 16
   enableActiveStandby: false  # Enable active-standby
+  distributionMode: lightening  # spread or lightening
 
 # Related configuration of queryNode, used to run hybrid search between vector and scalar data.
 queryNode:

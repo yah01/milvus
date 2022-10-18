@@ -12,6 +12,7 @@
 package paramtable
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"runtime"
@@ -690,6 +691,13 @@ func (p *proxyConfig) initMaxRoleNum() {
 
 // /////////////////////////////////////////////////////////////////////////////
 // --- querycoord ---
+type DistributionMode = int32
+
+const (
+	Spread DistributionMode = iota + 1
+	Lightening
+)
+
 type queryCoordConfig struct {
 	Base *BaseTable
 
@@ -720,6 +728,7 @@ type queryCoordConfig struct {
 	LoadTimeoutSeconds                  time.Duration
 	CheckHandoffInterval                time.Duration
 	EnableActiveStandby                 bool
+	DistributionMode                    DistributionMode
 }
 
 func (p *queryCoordConfig) init(base *BaseTable) {
@@ -746,6 +755,7 @@ func (p *queryCoordConfig) init(base *BaseTable) {
 	p.initLoadTimeoutSeconds()
 	p.initCheckHandoffInterval()
 	p.initEnableActiveStandby()
+	p.initDistributionMode()
 }
 
 func (p *queryCoordConfig) initTaskRetryNum() {
@@ -863,6 +873,20 @@ func (p *queryCoordConfig) initCheckHandoffInterval() {
 		panic(err)
 	}
 	p.CheckHandoffInterval = time.Duration(checkHandoffInterval) * time.Millisecond
+}
+
+func (p *queryCoordConfig) initDistributionMode() {
+	modeMap := map[string]DistributionMode{
+		"spread":     Spread,
+		"lightening": Lightening,
+	}
+
+	distributionModeStr := p.Base.LoadWithDefault("queryCoord.distributionMode", "spread")
+	mode, ok := modeMap[distributionModeStr]
+	if !ok {
+		panic(fmt.Sprintf("invalid QueryCoord distribution mode: %s", distributionModeStr))
+	}
+	p.DistributionMode = mode
 }
 
 func (p *queryCoordConfig) SetNodeID(id UniqueID) {
