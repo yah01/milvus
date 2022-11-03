@@ -1,0 +1,867 @@
+// Licensed to the LF AI & Data foundation under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License. You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package segments
+
+/*
+#cgo pkg-config: milvus_segcore
+
+#include "segcore/collection_c.h"
+#include "segcore/plan_c.h"
+#include "segcore/reduce_c.h"
+*/
+import "C"
+import (
+	"bytes"
+	"context"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"sort"
+	"sync"
+	"unsafe"
+
+	"github.com/milvus-io/milvus/internal/proto/internalpb"
+	"github.com/milvus-io/milvus/internal/querynodev2/cgoutil"
+	"github.com/milvus-io/milvus/internal/util/funcutil"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
+	"github.com/milvus-io/milvus/internal/util/typeutil"
+
+	"github.com/bits-and-blooms/bloom/v3"
+	"github.com/milvus-io/milvus/internal/metrics"
+	"github.com/milvus-io/milvus/internal/util/timerecord"
+
+	"github.com/golang/protobuf/proto"
+	"go.uber.org/zap"
+
+	"github.com/milvus-io/milvus-proto/go-api/commonpb"
+	"github.com/milvus-io/milvus-proto/go-api/schemapb"
+	"github.com/milvus-io/milvus/internal/common"
+	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/proto/datapb"
+	"github.com/milvus-io/milvus/internal/proto/querypb"
+	"github.com/milvus-io/milvus/internal/proto/segcorepb"
+	"github.com/milvus-io/milvus/internal/storage"
+)
+
+type SegmentType = commonpb.SegmentState
+
+const (
+	SegmentTypeGrowing = commonpb.SegmentState_Growing
+	SegmentTypeSealed  = commonpb.SegmentState_Sealed
+)
+
+var (
+	ErrSegmentUnhealthy = errors.New("segment unhealthy")
+)
+
+// IndexedFieldInfo contains binlog info of vector field
+type IndexedFieldInfo struct {
+	fieldBinlog *datapb.FieldBinlog
+	indexInfo   *querypb.FieldIndexInfo
+}
+
+type DeleteRecord struct {
+	PrimaryKeys []storage.PrimaryKey
+	Timestamps  []typeutil.Timestamp
+	Offsets     int64
+}
+
+func NewDeleteRecordWithCap(cap int) *DeleteRecord {
+	return &DeleteRecord{
+		PrimaryKeys: make([]storage.PrimaryKey, 0, cap),
+		Timestamps:  make([]typeutil.Timestamp, 0, cap),
+	}
+}
+
+type Segment interface {
+	// Properties
+	ID() int64
+	Collection() int64
+	Partition() int64
+	Channel() string
+	Version() int64
+	StartPosition() *internalpb.MsgPosition
+	Type() SegmentType
+
+	// Index related
+	AddIndex(fieldID int64, index *IndexedFieldInfo)
+	GetIndex(fieldID int64) *IndexedFieldInfo
+	HaveIndex(fieldID int64) bool
+
+	// Insert related
+	Insert(rowIDs []int64, timestamps []typeutil.Timestamp, record *segcorepb.InsertRecord) error
+	Delete(peimaryKeys []storage.PrimaryKey, timestamps []typeutil.Timestamp) error
+
+	// Query related
+	Search(searchReq *searchRequest) (*SearchResult, error)
+	Retrieve(plan *RetrievePlan) (*segcorepb.RetrieveResults, error)
+}
+
+// Segment is a wrapper of the underlying C-structure segment.
+type LocalSegment struct {
+	mut sync.RWMutex // protects segmentPtr
+	ptr C.CSegmentInterface
+
+	segmentID     int64
+	partitionID   int64
+	channel       string
+	collectionID  int64
+	version       int64
+	startPosition *internalpb.MsgPosition // for growing segment release
+
+	size              int64
+	row               int64
+	typ               SegmentType
+	indexedFieldInfos *typeutil.ConcurrentMap[int64, *IndexedFieldInfo]
+
+	// Sealed segment only
+	statsMutex   sync.RWMutex
+	currentStat  *storage.PkStatistics
+	historyStats []*storage.PkStatistics
+}
+
+// ID returns the identity number.
+func (s *LocalSegment) ID() int64 {
+	return s.segmentID
+}
+
+func (s *LocalSegment) AddIndex(fieldID int64, info *IndexedFieldInfo) {
+	s.indexedFieldInfos.Insert(fieldID, info)
+}
+
+func (s *LocalSegment) GetIndex(fieldID int64) *IndexedFieldInfo {
+	info, ok := s.indexedFieldInfos.Get(fieldID)
+	if !ok {
+		return nil
+	}
+	return info
+}
+
+func (s *LocalSegment) HaveIndex(fieldID int64) bool {
+	fieldInfo, ok := s.indexedFieldInfos.Get(fieldID)
+	if !ok {
+		return false
+	}
+	return fieldInfo.indexInfo != nil && fieldInfo.indexInfo.EnableIndex
+}
+
+func (s *LocalSegment) Type() SegmentType {
+	return s.typ
+}
+
+// MayPkExist returns true if the given PK exists in the PK range and being positive through the bloom filter,
+// false otherwise,
+// may returns true even the PK doesn't exist actually
+func (s *LocalSegment) MayPkExist(pk storage.PrimaryKey) bool {
+	s.statsMutex.RLock()
+	defer s.statsMutex.RUnlock()
+	if s.currentStat != nil && s.currentStat.PkExist(pk) {
+		return true
+	}
+
+	// for sealed, if one of the stats shows it exist, then we have to check it
+	for _, historyStat := range s.historyStats {
+		if historyStat.PkExist(pk) {
+			return true
+		}
+	}
+	return false
+}
+
+func NewSegment(collection *Collection,
+	segmentID int64,
+	partitionID int64,
+	collectionID int64,
+	vChannelID string,
+	segmentType SegmentType,
+	version int64,
+	startPosition *internalpb.MsgPosition) (*LocalSegment, error) {
+	/*
+		CSegmentInterface
+		NewSegment(CCollection collection, uint64_t segment_id, SegmentType seg_type);
+	*/
+	var segmentPtr C.CSegmentInterface
+	switch segmentType {
+	case SegmentTypeSealed:
+		cgoPool.Submit(func() (interface{}, error) {
+			segmentPtr = C.NewSegment(collection.collectionPtr, C.Sealed, C.int64_t(segmentID))
+			return nil, nil
+		}).Await()
+	case SegmentTypeGrowing:
+		cgoPool.Submit(func() (interface{}, error) {
+			segmentPtr = C.NewSegment(collection.collectionPtr, C.Growing, C.int64_t(segmentID))
+			return nil, nil
+		}).Await()
+	default:
+		err := fmt.Errorf("illegal segment type %d when create segment  %d", segmentType, segmentID)
+		log.Warn("create new segment error",
+			zap.Int64("collectionID", collectionID),
+			zap.Int64("partitionID", partitionID),
+			zap.Int64("segmentID", segmentID),
+			zap.String("segmentType", segmentType.String()),
+			zap.Error(err))
+		return nil, err
+	}
+
+	log.Info("create segment",
+		zap.Int64("collectionID", collectionID),
+		zap.Int64("partitionID", partitionID),
+		zap.Int64("segmentID", segmentID),
+		zap.String("segmentType", segmentType.String()))
+
+	var segment = &LocalSegment{
+		ptr:               segmentPtr,
+		typ:               segmentType,
+		segmentID:         segmentID,
+		partitionID:       partitionID,
+		collectionID:      collectionID,
+		version:           version,
+		startPosition:     startPosition,
+		channel:           vChannelID,
+		indexedFieldInfos: typeutil.NewConcurrentMap[int64, *IndexedFieldInfo](),
+		cgoPool:           cgoPool,
+	}
+
+	return segment, nil
+}
+
+func DeleteSegment(segment *LocalSegment) {
+	/*
+		void
+		deleteSegment(CSegmentInterface segment);
+	*/
+	// wait all read ops finished
+	segment.mut.Lock()
+	defer segment.mut.Unlock()
+
+	if segment.ptr == nil {
+		return
+	}
+
+	segment.cgoPool.Submit(func() (interface{}, error) {
+		C.DeleteSegment(cPtr)
+		return nil, nil
+	}).Await()
+
+	log.Info("delete segment from memory",
+		zap.Int64("collectionID", segment.collectionID),
+		zap.Int64("partitionID", segment.partitionID),
+		zap.Int64("segmentID", segment.ID()),
+		zap.String("segmentType", segment.typ.String()))
+}
+
+func (s *LocalSegment) Search(searchReq *searchRequest) (*SearchResult, error) {
+	/*
+		CStatus
+		Search(void* plan,
+			void* placeholder_groups,
+			uint64_t* timestamps,
+			int num_groups,
+			long int* result_ids,
+			float* result_distances);
+	*/
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+	if !s.healthy() {
+		return nil, fmt.Errorf("%w(segmentID=%d)", ErrSegmentUnhealthy, s.segmentID)
+	}
+
+	if searchReq.plan == nil {
+		return nil, fmt.Errorf("nil search plan")
+	}
+
+	loadIndex := s.hasLoadIndexForIndexedField(searchReq.searchFieldID)
+	var searchResult SearchResult
+	log.Debug("start do search on segment",
+		zap.Int64("msgID", searchReq.msgID),
+		zap.Int64("segmentID", s.segmentID),
+		zap.String("segmentType", s.typ.String()),
+		zap.Bool("loadIndex", loadIndex))
+
+	var status C.CStatus
+	cgoPool.Submit(func() (interface{}, error) {
+		tr := timerecord.NewTimeRecorder("cgoSearch")
+		status = C.Search(s.ptr, searchReq.plan.cSearchPlan, searchReq.cPlaceholderGroup,
+			C.uint64_t(searchReq.timestamp), &searchResult.cSearchResult)
+		metrics.QueryNodeSQSegmentLatencyInCore.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.SearchLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
+		return nil, nil
+	}).Await()
+	if err := HandleCStatus(&status, "Search failed"); err != nil {
+		return nil, err
+	}
+	log.Debug("do search on segment done",
+		zap.Int64("msgID", searchReq.msgID),
+		zap.Int64("segmentID", s.segmentID),
+		zap.String("segmentType", s.typ.String()),
+		zap.Bool("loadIndex", loadIndex))
+	return &searchResult, nil
+}
+
+func (s *LocalSegment) Retrieve(plan *RetrievePlan) (*segcorepb.RetrieveResults, error) {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+	if !s.healthy() {
+		return nil, fmt.Errorf("%w(segmentID=%d)", ErrSegmentUnhealthy, s.segmentID)
+	}
+
+	var retrieveResult RetrieveResult
+	ts := C.uint64_t(plan.Timestamp)
+
+	var status C.CStatus
+	cgoPool.Submit(func() (interface{}, error) {
+		tr := timerecord.NewTimeRecorder("cgoRetrieve")
+		status = C.Retrieve(s.ptr, plan.cRetrievePlan, ts, &retrieveResult.cRetrieveResult)
+		metrics.QueryNodeSQSegmentLatencyInCore.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()),
+			metrics.QueryLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
+		log.Debug("do retrieve on segment",
+			zap.Int64("msgID", plan.msgID),
+			zap.Int64("segmentID", s.segmentID), zap.String("segmentType", s.typ.String()))
+
+		return nil, nil
+	}).Await()
+
+	if err := HandleCStatus(&status, "Retrieve failed"); err != nil {
+		return nil, err
+	}
+	result := new(segcorepb.RetrieveResults)
+	if err := HandleCProto(&retrieveResult.cRetrieveResult, result); err != nil {
+		return nil, err
+	}
+
+	sort.Sort(&byPK{result})
+	return result, nil
+}
+
+func fillBinVecFieldData(ctx context.Context, vcm storage.ChunkManager, dataPath string, fieldData *schemapb.FieldData, i int, offset int64, endian binary.ByteOrder) error {
+	dim := fieldData.GetVectors().GetDim()
+	rowBytes := dim / 8
+	content, err := vcm.ReadAt(ctx, dataPath, offset*rowBytes, rowBytes)
+	if err != nil {
+		return err
+	}
+	x := fieldData.GetVectors().GetData().(*schemapb.VectorField_BinaryVector)
+	resultLen := dim / 8
+	copy(x.BinaryVector[i*int(resultLen):(i+1)*int(resultLen)], content)
+	return nil
+}
+
+func fillFloatVecFieldData(ctx context.Context, vcm storage.ChunkManager, dataPath string, fieldData *schemapb.FieldData, i int, offset int64, endian binary.ByteOrder) error {
+	dim := fieldData.GetVectors().GetDim()
+	rowBytes := dim * 4
+	content, err := vcm.ReadAt(ctx, dataPath, offset*rowBytes, rowBytes)
+	if err != nil {
+		return err
+	}
+	x := fieldData.GetVectors().GetData().(*schemapb.VectorField_FloatVector)
+	floatResult := make([]float32, dim)
+	buf := bytes.NewReader(content)
+	if err = binary.Read(buf, endian, &floatResult); err != nil {
+		return err
+	}
+	resultLen := dim
+	copy(x.FloatVector.Data[i*int(resultLen):(i+1)*int(resultLen)], floatResult)
+	return nil
+}
+
+func fillBoolFieldData(ctx context.Context, vcm storage.ChunkManager, dataPath string, fieldData *schemapb.FieldData, i int, offset int64, endian binary.ByteOrder) error {
+	// read whole file.
+	// TODO: optimize here.
+	content, err := vcm.Read(ctx, dataPath)
+	if err != nil {
+		return err
+	}
+	var arr schemapb.BoolArray
+	err = proto.Unmarshal(content, &arr)
+	if err != nil {
+		return err
+	}
+	fieldData.GetScalars().GetBoolData().GetData()[i] = arr.Data[offset]
+	return nil
+}
+
+func fillStringFieldData(ctx context.Context, vcm storage.ChunkManager, dataPath string, fieldData *schemapb.FieldData, i int, offset int64, endian binary.ByteOrder) error {
+	// read whole file.
+	// TODO: optimize here.
+	content, err := vcm.Read(ctx, dataPath)
+	if err != nil {
+		return err
+	}
+	var arr schemapb.StringArray
+	err = proto.Unmarshal(content, &arr)
+	if err != nil {
+		return err
+	}
+	fieldData.GetScalars().GetStringData().GetData()[i] = arr.Data[offset]
+	return nil
+}
+
+func fillInt8FieldData(ctx context.Context, vcm storage.ChunkManager, dataPath string, fieldData *schemapb.FieldData, i int, offset int64, endian binary.ByteOrder) error {
+	// read by offset.
+	rowBytes := int64(1)
+	content, err := vcm.ReadAt(ctx, dataPath, offset*rowBytes, rowBytes)
+	if err != nil {
+		return err
+	}
+	var i8 int8
+	if err := funcutil.ReadBinary(endian, content, &i8); err != nil {
+		return err
+	}
+	fieldData.GetScalars().GetIntData().GetData()[i] = int32(i8)
+	return nil
+}
+
+func fillInt16FieldData(ctx context.Context, vcm storage.ChunkManager, dataPath string, fieldData *schemapb.FieldData, i int, offset int64, endian binary.ByteOrder) error {
+	// read by offset.
+	rowBytes := int64(2)
+	content, err := vcm.ReadAt(ctx, dataPath, offset*rowBytes, rowBytes)
+	if err != nil {
+		return err
+	}
+	var i16 int16
+	if err := funcutil.ReadBinary(endian, content, &i16); err != nil {
+		return err
+	}
+	fieldData.GetScalars().GetIntData().GetData()[i] = int32(i16)
+	return nil
+}
+
+func fillInt32FieldData(ctx context.Context, vcm storage.ChunkManager, dataPath string, fieldData *schemapb.FieldData, i int, offset int64, endian binary.ByteOrder) error {
+	// read by offset.
+	rowBytes := int64(4)
+	content, err := vcm.ReadAt(ctx, dataPath, offset*rowBytes, rowBytes)
+	if err != nil {
+		return err
+	}
+	return funcutil.ReadBinary(endian, content, &(fieldData.GetScalars().GetIntData().GetData()[i]))
+}
+
+func fillInt64FieldData(ctx context.Context, vcm storage.ChunkManager, dataPath string, fieldData *schemapb.FieldData, i int, offset int64, endian binary.ByteOrder) error {
+	// read by offset.
+	rowBytes := int64(8)
+	content, err := vcm.ReadAt(ctx, dataPath, offset*rowBytes, rowBytes)
+	if err != nil {
+		return err
+	}
+	return funcutil.ReadBinary(endian, content, &(fieldData.GetScalars().GetLongData().GetData()[i]))
+}
+
+func fillFloatFieldData(ctx context.Context, vcm storage.ChunkManager, dataPath string, fieldData *schemapb.FieldData, i int, offset int64, endian binary.ByteOrder) error {
+	// read by offset.
+	rowBytes := int64(4)
+	content, err := vcm.ReadAt(ctx, dataPath, offset*rowBytes, rowBytes)
+	if err != nil {
+		return err
+	}
+	return funcutil.ReadBinary(endian, content, &(fieldData.GetScalars().GetFloatData().GetData()[i]))
+}
+
+func fillDoubleFieldData(ctx context.Context, vcm storage.ChunkManager, dataPath string, fieldData *schemapb.FieldData, i int, offset int64, endian binary.ByteOrder) error {
+	// read by offset.
+	rowBytes := int64(8)
+	content, err := vcm.ReadAt(ctx, dataPath, offset*rowBytes, rowBytes)
+	if err != nil {
+		return err
+	}
+	return funcutil.ReadBinary(endian, content, &(fieldData.GetScalars().GetDoubleData().GetData()[i]))
+}
+
+func fillFieldData(ctx context.Context, vcm storage.ChunkManager, dataPath string, fieldData *schemapb.FieldData, i int, offset int64, endian binary.ByteOrder) error {
+	switch fieldData.Type {
+	case schemapb.DataType_BinaryVector:
+		return fillBinVecFieldData(ctx, vcm, dataPath, fieldData, i, offset, endian)
+	case schemapb.DataType_FloatVector:
+		return fillFloatVecFieldData(ctx, vcm, dataPath, fieldData, i, offset, endian)
+	case schemapb.DataType_Bool:
+		return fillBoolFieldData(ctx, vcm, dataPath, fieldData, i, offset, endian)
+	case schemapb.DataType_String, schemapb.DataType_VarChar:
+		return fillStringFieldData(ctx, vcm, dataPath, fieldData, i, offset, endian)
+	case schemapb.DataType_Int8:
+		return fillInt8FieldData(ctx, vcm, dataPath, fieldData, i, offset, endian)
+	case schemapb.DataType_Int16:
+		return fillInt16FieldData(ctx, vcm, dataPath, fieldData, i, offset, endian)
+	case schemapb.DataType_Int32:
+		return fillInt32FieldData(ctx, vcm, dataPath, fieldData, i, offset, endian)
+	case schemapb.DataType_Int64:
+		return fillInt64FieldData(ctx, vcm, dataPath, fieldData, i, offset, endian)
+	case schemapb.DataType_Float:
+		return fillFloatFieldData(ctx, vcm, dataPath, fieldData, i, offset, endian)
+	case schemapb.DataType_Double:
+		return fillDoubleFieldData(ctx, vcm, dataPath, fieldData, i, offset, endian)
+	default:
+		return fmt.Errorf("invalid data type: %s", fieldData.Type.String())
+	}
+}
+
+func (s *LocalSegment) fillIndexedFieldsData(ctx context.Context, collectionID int64,
+	vcm storage.ChunkManager, result *segcorepb.RetrieveResults) error {
+
+	for _, fieldData := range result.FieldsData {
+		// If the vector field doesn't have indexed. Vector data is in memory for
+		// brute force search. No need to download data from remote.
+		if !s.hasLoadIndexForIndexedField(fieldData.FieldId) {
+			continue
+		}
+
+		indexedFieldInfo, err := s.getIndexedFieldInfo(fieldData.FieldId)
+		if err != nil {
+			continue
+		}
+
+		// TODO: optimize here. Now we'll read a whole file from storage every time we retrieve raw data by offset.
+		for i, offset := range result.Offset {
+			dataPath, offsetInBinlog := s.getFieldDataPath(indexedFieldInfo, offset)
+			endian := common.Endian
+
+			// fill field data that fieldData[i] = dataPath[offsetInBinlog*rowBytes, (offsetInBinlog+1)*rowBytes]
+			if err := fillFieldData(ctx, vcm, dataPath, fieldData, i, offsetInBinlog, endian); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (s *LocalSegment) updateBloomFilter(pks []primaryKey) {
+	s.statLock.Lock()
+	defer s.statLock.Unlock()
+	s.InitCurrentStat()
+	buf := make([]byte, 8)
+	for _, pk := range pks {
+		s.currentStat.UpdateMinMax(pk)
+		switch pk.Type() {
+		case schemapb.DataType_Int64:
+			int64Value := pk.(*int64PrimaryKey).Value
+			common.Endian.PutUint64(buf, uint64(int64Value))
+			s.currentStat.PkFilter.Add(buf)
+		case schemapb.DataType_VarChar:
+			stringValue := pk.(*varCharPrimaryKey).Value
+			s.currentStat.PkFilter.AddString(stringValue)
+		default:
+			log.Error("failed to update bloomfilter", zap.Any("PK type", pk.Type()))
+			panic("failed to update bloomfilter")
+		}
+	}
+}
+
+func (s *LocalSegment) InitCurrentStat() {
+	if s.currentStat == nil {
+		s.currentStat = &storage.PkStatistics{
+			PkFilter: bloom.NewWithEstimates(storage.BloomFilterSize, storage.MaxBloomFalsePositive),
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------- interfaces for growing segment
+func (s *LocalSegment) preInsert(numOfRecords int) (int64, error) {
+	/*
+		long int
+		PreInsert(CSegmentInterface c_segment, long int size);
+	*/
+	var offset int64
+	var status C.CStatus
+	cOffset := (*C.int64_t)(&offset)
+	cgoPool.Submit(func() (interface{}, error) {
+		status = C.PreInsert(s.ptr, C.int64_t(int64(numOfRecords)), cOffset)
+		return nil, nil
+	}).Await()
+	if err := cgoutil.HandleCStatus(&status, "PreInsert failed"); err != nil {
+		return 0, err
+	}
+	return offset, nil
+}
+
+func (s *LocalSegment) preDelete(numOfRecords int) int64 {
+	/*
+		long int
+		PreDelete(CSegmentInterface c_segment, long int size);
+	*/
+	var offset C.int64_t
+	cgoPool.Submit(func() (interface{}, error) {
+		offset = C.PreDelete(s.ptr, C.int64_t(int64(numOfRecords)))
+
+		return nil, nil
+	}).Await()
+
+	return int64(offset)
+}
+
+func (s *LocalSegment) Insert(rowIDs []int64, timestamps []typeutil.Timestamp, record *segcorepb.InsertRecord) error {
+	if s.Type() != SegmentTypeGrowing {
+		return fmt.Errorf("unexpected segmentType when segmentInsert, segmentType = %s", s.typ.String())
+	}
+
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+
+	offset, err := s.preInsert(len(rowIDs))
+	if err != nil {
+		return err
+	}
+
+	insertRecordBlob, err := proto.Marshal(record)
+	if err != nil {
+		return fmt.Errorf("failed to marshal insert record: %s", err)
+	}
+
+	var numOfRow = len(rowIDs)
+	var cOffset = C.int64_t(offset)
+	var cNumOfRows = C.int64_t(numOfRow)
+	var cEntityIdsPtr = (*C.int64_t)(&(rowIDs)[0])
+	var cTimestampsPtr = (*C.uint64_t)(&(timestamps)[0])
+
+	var status C.CStatus
+
+	cgoPool.Submit(func() (interface{}, error) {
+		status = C.Insert(s.ptr,
+			cOffset,
+			cNumOfRows,
+			cEntityIdsPtr,
+			cTimestampsPtr,
+			(*C.uint8_t)(unsafe.Pointer(&insertRecordBlob[0])),
+			(C.uint64_t)(len(insertRecordBlob)))
+
+		return nil, nil
+	}).Await()
+
+	if err := cgoutil.HandleCStatus(&status, "Insert failed"); err != nil {
+		return err
+	}
+	metrics.QueryNodeNumEntities.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Add(float64(numOfRow))
+
+	return nil
+}
+
+func (s *LocalSegment) Delete(primaryKeys []storage.PrimaryKey, timestamps []typeutil.Timestamp) error {
+	/*
+		CStatus
+		Delete(CSegmentInterface c_segment,
+		           long int reserved_offset,
+		           long size,
+		           const long* primary_keys,
+		           const unsigned long* timestamps);
+	*/
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+
+	s.preDelete(len(primaryKeys))
+
+	var cOffset = C.int64_t(offset)
+	var cSize = C.int64_t(len(primaryKeys))
+	var cTimestampsPtr = (*C.uint64_t)(&(timestamps)[0])
+
+	ids := &schemapb.IDs{}
+	pkType := primaryKeys[0].Type()
+	switch pkType {
+	case schemapb.DataType_Int64:
+		int64Pks := make([]int64, len(primaryKeys))
+		for index, entity := range primaryKeys {
+			int64Pks[index] = entity.(*int64PrimaryKey).Value
+		}
+		ids.IdField = &schemapb.IDs_IntId{
+			IntId: &schemapb.LongArray{
+				Data: int64Pks,
+			},
+		}
+	case schemapb.DataType_VarChar:
+		varCharPks := make([]string, len(primaryKeys))
+		for index, entity := range primaryKeys {
+			varCharPks[index] = entity.(*varCharPrimaryKey).Value
+		}
+		ids.IdField = &schemapb.IDs_StrId{
+			StrId: &schemapb.StringArray{
+				Data: varCharPks,
+			},
+		}
+	default:
+		return fmt.Errorf("invalid data type of primary keys")
+	}
+
+	dataBlob, err := proto.Marshal(ids)
+	if err != nil {
+		return fmt.Errorf("failed to marshal ids: %s", err)
+	}
+
+	var status C.CStatus
+	cgoPool.Submit(func() (interface{}, error) {
+		status = C.Delete(s.ptr, cOffset, cSize, (*C.uint8_t)(unsafe.Pointer(&dataBlob[0])), (C.uint64_t)(len(dataBlob)), cTimestampsPtr)
+
+		return nil, nil
+	}).Await()
+
+	if err := cgoutil.HandleCStatus(&status, "Delete failed"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+//-------------------------------------------------------------------------------------- interfaces for sealed segment
+func (s *LocalSegment) segmentLoadFieldData(fieldID int64, rowCount int64, data *schemapb.FieldData) error {
+	/*
+		CStatus
+		LoadFieldData(CSegmentInterface c_segment, CLoadFieldDataInfo load_field_data_info);
+	*/
+	if s.Type() != SegmentTypeSealed {
+		errMsg := fmt.Sprintln("segmentLoadFieldData failed, illegal segment type ", s.typ, "segmentID = ", s.ID())
+		return errors.New(errMsg)
+	}
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+	if !s.healthy() {
+		return fmt.Errorf("%w(segmentID=%d)", ErrSegmentUnhealthy, s.segmentID)
+	}
+
+	dataBlob, err := proto.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	loadInfo := C.CLoadFieldDataInfo{
+		field_id:  C.int64_t(fieldID),
+		blob:      (*C.uint8_t)(unsafe.Pointer(&dataBlob[0])),
+		blob_size: C.uint64_t(len(dataBlob)),
+		row_count: C.int64_t(rowCount),
+	}
+
+	var status C.CStatus
+	cgoPool.Submit(func() (interface{}, error) {
+		status = C.LoadFieldData(s.ptr, loadInfo)
+		return nil, nil
+	}).Await()
+
+	if err := HandleCStatus(&status, "LoadFieldData failed"); err != nil {
+		return err
+	}
+
+	log.Info("load field done",
+		zap.Int64("fieldID", fieldID),
+		zap.Int64("row count", rowCount),
+		zap.Int64("segmentID", s.ID()))
+
+	return nil
+}
+
+func (s *LocalSegment) segmentLoadDeletedRecord(primaryKeys []primaryKey, timestamps []Timestamp, rowCount int64) error {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+	if !s.healthy() {
+		return fmt.Errorf("%w(segmentID=%d)", ErrSegmentUnhealthy, s.segmentID)
+	}
+
+	if len(primaryKeys) <= 0 {
+		return fmt.Errorf("empty pks to delete")
+	}
+	pkType := primaryKeys[0].Type()
+	ids := &schemapb.IDs{}
+	switch pkType {
+	case schemapb.DataType_Int64:
+		int64Pks := make([]int64, len(primaryKeys))
+		for index, pk := range primaryKeys {
+			int64Pks[index] = pk.(*int64PrimaryKey).Value
+		}
+		ids.IdField = &schemapb.IDs_IntId{
+			IntId: &schemapb.LongArray{
+				Data: int64Pks,
+			},
+		}
+	case schemapb.DataType_VarChar:
+		varCharPks := make([]string, len(primaryKeys))
+		for index, pk := range primaryKeys {
+			varCharPks[index] = pk.(*varCharPrimaryKey).Value
+		}
+		ids.IdField = &schemapb.IDs_StrId{
+			StrId: &schemapb.StringArray{
+				Data: varCharPks,
+			},
+		}
+	default:
+		return fmt.Errorf("invalid data type of primary keys")
+	}
+
+	idsBlob, err := proto.Marshal(ids)
+	if err != nil {
+		return err
+	}
+
+	loadInfo := C.CLoadDeletedRecordInfo{
+		timestamps:        unsafe.Pointer(&timestamps[0]),
+		primary_keys:      (*C.uint8_t)(unsafe.Pointer(&idsBlob[0])),
+		primary_keys_size: C.uint64_t(len(idsBlob)),
+		row_count:         C.int64_t(rowCount),
+	}
+	/*
+		CStatus
+		LoadDeletedRecord(CSegmentInterface c_segment, CLoadDeletedRecordInfo deleted_record_info)
+	*/
+	var status C.CStatus
+	cgoPool.Submit(func() (interface{}, error) {
+		status = C.LoadDeletedRecord(s.ptr, loadInfo)
+		return nil, nil
+	}).Await()
+
+	if err := HandleCStatus(&status, "LoadDeletedRecord failed"); err != nil {
+		return err
+	}
+
+	log.Info("load deleted record done",
+		zap.Int64("row count", rowCount),
+		zap.Int64("segmentID", s.ID()),
+		zap.String("segmentType", s.Type().String()))
+	return nil
+}
+
+func (s *LocalSegment) segmentLoadIndexData(bytesIndex [][]byte, indexInfo *querypb.FieldIndexInfo, fieldType schemapb.DataType) error {
+	loadIndexInfo, err := newLoadIndexInfo()
+	defer deleteLoadIndexInfo(loadIndexInfo)
+	if err != nil {
+		return err
+	}
+
+	err = loadIndexInfo.appendLoadIndexInfo(bytesIndex, indexInfo, s.collectionID, s.partitionID, s.segmentID, fieldType)
+	if err != nil {
+		if loadIndexInfo.cleanLocalData() != nil {
+			log.Warn("failed to clean cached data on disk after append index failed",
+				zap.Int64("buildID", indexInfo.BuildID),
+				zap.Int64("index version", indexInfo.IndexVersion))
+		}
+		return err
+	}
+	if s.Type() != SegmentTypeSealed {
+		errMsg := fmt.Sprintln("updateSegmentIndex failed, illegal segment type ", s.typ, "segmentID = ", s.ID())
+		return errors.New(errMsg)
+	}
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+	if !s.healthy() {
+		return fmt.Errorf("%w(segmentID=%d)", ErrSegmentUnhealthy, s.segmentID)
+	}
+
+	var status C.CStatus
+	cgoPool.Submit(func() (interface{}, error) {
+		status = C.UpdateSealedSegmentIndex(s.ptr, loadIndexInfo.cLoadIndexInfo)
+		return nil, nil
+	}).Await()
+
+	if err := HandleCStatus(&status, "UpdateSealedSegmentIndex failed"); err != nil {
+		return err
+	}
+
+	log.Info("updateSegmentIndex done", zap.Int64("segmentID", s.ID()), zap.Int64("fieldID", indexInfo.FieldID))
+
+	return nil
+}
