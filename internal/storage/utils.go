@@ -826,8 +826,7 @@ func binaryWrite(endian binary.ByteOrder, data interface{}) ([]byte, error) {
 func FieldDataToBytes(endian binary.ByteOrder, fieldData FieldData) ([]byte, error) {
 	switch field := fieldData.(type) {
 	case *BoolFieldData:
-		// return binaryWrite(endian, field.Data)
-		return boolFieldDataToPbBytes(field)
+		return binaryWrite(endian, field.Data)
 	case *StringFieldData:
 		return stringFieldDataToPbBytes(field)
 	case *BinaryVectorFieldData:
