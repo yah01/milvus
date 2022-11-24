@@ -1,0 +1,19 @@
+[requires]
+grpc/1.50.1
+
+[generators]
+cmake
+
+[options]
+rocksdb:shared=True
+arrow:parquet=True
+arrow:compute=True
+arrow:with_zstd=True
+aws-sdk-cpp:text-to-speech=False
+aws-sdk-cpp:transfer=False
+gtest:build_gmock=False
+
+[imports]
+lib, *.dylib -> ../lib
+lib, *.dll -> ../lib
+lib, *.so* -> ../lib
