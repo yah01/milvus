@@ -201,6 +201,7 @@ func (c *ChannelMeta) addSegment(req addSegmentReq) error {
 		zap.Int64("collectionID", req.collID),
 		zap.Int64("partitionID", req.partitionID),
 		zap.String("channel", c.channelName),
+		zap.Any("stats", req.statsBinLogs),
 		zap.Any("startPosition", req.startPos),
 		zap.Any("endPosition", req.endPos),
 		zap.Uint64("recoverTs", req.recoverTs),
