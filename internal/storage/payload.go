@@ -47,11 +47,10 @@ type PayloadWriterInterface interface {
 	AddOneStringToPayload(msgs string) error
 	AddBinaryVectorToPayload(binVec []byte, dim int) error
 	AddFloatVectorToPayload(binVec []float32, dim int) error
-	FinishPayloadWriter() error
+	Flush() error
 	GetPayloadBufferFromWriter() ([]byte, error)
 	GetPayloadLengthFromWriter() (int, error)
-	ReleasePayloadWriter()
-	Close()
+	Close() error
 }
 
 // PayloadReaderInterface abstracts PayloadReader
