@@ -11,15 +11,16 @@
 
 #pragma once
 
+#include <tbb/concurrent_priority_queue.h>
+#include <tbb/concurrent_vector.h>
+
 #include <deque>
-#include <unordered_map>
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
-#include <tbb/concurrent_priority_queue.h>
-#include <tbb/concurrent_vector.h>
 
 #include "ConcurrentVector.h"
 #include "DeletedRecord.h"
@@ -33,7 +34,7 @@ namespace milvus::segcore {
 
 class SegmentSealedImpl : public SegmentSealed {
  public:
-    explicit SegmentSealedImpl(SchemaPtr schema, int64_t segment_id);
+    explicit SegmentSealedImpl(SchemaPtr schema, int64_t segment_id, int64_t row_num = 0);
     void
     LoadIndex(const LoadIndexInfo& info) override;
     void
@@ -193,7 +194,7 @@ class SegmentSealedImpl : public SegmentSealed {
     SealedIndexingRecord vector_indexings_;
 
     // inserted fields data and row_ids, timestamps
-    InsertRecord<true> insert_record_;
+    SealedInsertRecord insert_record_;
 
     // deleted pks
     mutable DeletedRecord deleted_record_;
@@ -203,8 +204,8 @@ class SegmentSealedImpl : public SegmentSealed {
 };
 
 inline SegmentSealedPtr
-CreateSealedSegment(SchemaPtr schema, int64_t segment_id = -1) {
-    return std::make_unique<SegmentSealedImpl>(schema, segment_id);
+CreateSealedSegment(SchemaPtr schema, int64_t segment_id = -1, int64_t row_num = 0) {
+    return std::make_unique<SegmentSealedImpl>(schema, segment_id, row_num);
 }
 
 }  // namespace milvus::segcore

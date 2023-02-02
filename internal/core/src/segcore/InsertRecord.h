@@ -11,18 +11,18 @@
 
 #pragma once
 
-#include <memory>
-#include <vector>
-#include <string>
 #include <algorithm>
+#include <memory>
+#include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
+#include "TimestampIndex.h"
 #include "common/Schema.h"
 #include "segcore/AckResponder.h"
 #include "segcore/ConcurrentVector.h"
 #include "segcore/Record.h"
-#include "TimestampIndex.h"
 
 namespace milvus::segcore {
 
@@ -122,7 +122,6 @@ class OffsetOrderedArray : public OffsetMap {
     std::vector<std::pair<T, int64_t>> array_;
 };
 
-template <bool is_sealed = false>
 struct InsertRecord {
     ConcurrentVector<Timestamp> timestamps_;
     ConcurrentVector<idx_t> row_ids_;
@@ -312,6 +311,43 @@ struct InsertRecord {
     //    std::vector<std::unique_ptr<VectorBase>> fields_data_;
     std::unordered_map<FieldId, std::unique_ptr<VectorBase>> fields_data_;
     mutable std::shared_mutex shared_mutex_;
+};
+
+struct FieldData {
+    int length_;
+    void* data_;
+
+    template <typename DataType>
+    DataType&
+    get<DataType>(int i) {
+        DataType* data = static_cast<DataType*>(data_);
+        return *(data + i);
+    }
+};
+
+struct GrowingInsertRecord : InsertRecord {
+    std::atomic<int64_t> reserved = 0;
+    AckResponder ack_responder_;
+
+    std::unordered_map<FieldId, std::unique_ptr<VectorBase>> fields_data_;
+};
+
+struct SealedInsertRecord : InsertRecord {
+    int64_t row_num_;
+    std::unordered_map<FieldId, std::unique_ptr<FieldData>> fields_data_;
+
+    SealedInsertRecord(int64_t row_num = 0) : row_num_(row_num) {
+    }
+
+    FieldData*
+    get_field(FieldId field_id) const {
+        return fields_data_.at(field_id).get();
+    }
+
+    template <typename DataType>
+    add_field_data(FieldId field_id, DataType* data, int64_t size) {
+        
+    }
 };
 
 }  // namespace milvus::segcore

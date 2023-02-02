@@ -24,7 +24,7 @@
 
 //////////////////////////////    common interfaces    //////////////////////////////
 CSegmentInterface
-NewSegment(CCollection collection, SegmentType seg_type, int64_t segment_id) {
+NewSegment(CCollection collection, SegmentType seg_type, int64_t segment_id, int64_t row_num) {
     auto col = (milvus::segcore::Collection*)collection;
 
     std::unique_ptr<milvus::segcore::SegmentInterface> segment;
