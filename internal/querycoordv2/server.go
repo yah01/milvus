@@ -326,6 +326,7 @@ func (s *Server) initObserver() {
 		s.dist,
 		s.meta,
 		s.targetMgr,
+		s.broker,
 		s.cluster,
 	)
 	s.targetObserver = observers.NewTargetObserver(

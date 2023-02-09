@@ -1314,6 +1314,7 @@ type queryNodeConfig struct {
 	TopKMergeRatio       ParamItem `refreshable:"true"`
 	CPURatio             ParamItem `refreshable:"true"`
 	MaxTimestampLag      ParamItem `refreshable:"true"`
+	GCEnabled            ParamItem `refreshable:"true"`
 
 	GCHelperEnabled     ParamItem `refreshable:"false"`
 	MinimumGOGCConfig   ParamItem `refreshable:"false"`
@@ -1567,6 +1568,13 @@ Max read concurrency must greater than or equal to 1, and less than or equal to 
 		Export:       true,
 	}
 	p.MaxTimestampLag.Init(base.mgr)
+
+	p.GCEnabled = ParamItem{
+		Key:          "queryNode.gcenabled",
+		Version:      "2.3.0",
+		DefaultValue: "true",
+	}
+	p.GCEnabled.Init(base.mgr)
 
 	p.GCHelperEnabled = ParamItem{
 		Key:          "queryNode.gchelper.enabled",

@@ -863,8 +863,8 @@ func withGarbageCollector(gc GarbageCollector) Opt {
 	}
 }
 
-func newMockFailStream() *msgstream.MockMsgStream {
-	stream := msgstream.NewMockMsgStream()
+func newMockFailStream() *msgstream.WastedMockMsgStream {
+	stream := msgstream.NewWastedMockMsgStream()
 	stream.BroadcastFunc = func(pack *msgstream.MsgPack) error {
 		return errors.New("error mock Broadcast")
 	}
@@ -889,8 +889,8 @@ func newTickerWithMockFailStream() *timetickSync {
 	return newTickerWithFactory(factory)
 }
 
-func newMockNormalStream() *msgstream.MockMsgStream {
-	stream := msgstream.NewMockMsgStream()
+func newMockNormalStream() *msgstream.WastedMockMsgStream {
+	stream := msgstream.NewWastedMockMsgStream()
 	stream.BroadcastFunc = func(pack *msgstream.MsgPack) error {
 		return nil
 	}

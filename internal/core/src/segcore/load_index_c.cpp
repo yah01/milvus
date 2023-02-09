@@ -9,15 +9,16 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
+#include "segcore/load_index_c.h"
+
 #include "common/CDataType.h"
 #include "common/FieldMeta.h"
 #include "common/Utils.h"
+#include "index/IndexFactory.h"
 #include "index/Meta.h"
 #include "index/Utils.h"
-#include "index/IndexFactory.h"
-#include "storage/Util.h"
-#include "segcore/load_index_c.h"
 #include "segcore/Types.h"
+#include "storage/Util.h"
 
 CStatus
 NewLoadIndexInfo(CLoadIndexInfo* c_load_index_info, CStorageConfig c_storage_config) {
@@ -129,13 +130,14 @@ appendVecIndex(CLoadIndexInfo c_load_index_info, CBinarySet c_binary_set) {
                                                   load_index_info->segment_id, load_index_info->field_id};
         milvus::storage::IndexMeta index_meta{load_index_info->segment_id, load_index_info->field_id,
                                               load_index_info->index_build_id, load_index_info->index_version};
+
         auto file_manager = milvus::storage::CreateFileManager(index_info.index_type, field_meta, index_meta,
                                                                load_index_info->storage_config);
 
         auto config = milvus::index::ParseConfigFromIndexParams(load_index_info->index_params);
         config["index_files"] = load_index_info->index_files;
-
         load_index_info->index = milvus::index::IndexFactory::GetInstance().CreateIndex(index_info, file_manager);
+
         load_index_info->index->Load(*binary_set, config);
         auto status = CStatus();
         status.error_code = Success;
