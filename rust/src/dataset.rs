@@ -379,11 +379,7 @@ impl Dataset {
     }
 
     /// Take rows by the internal ROW ids.
-    pub(crate) async fn take_rows(
-        &self,
-        row_ids: &[u64],
-        projection: &Schema,
-    ) -> Result<RecordBatch> {
+    pub async fn take_rows(&self, row_ids: &[u64], projection: &Schema) -> Result<RecordBatch> {
         let mut sorted_row_ids = Vec::from(row_ids);
         sorted_row_ids.sort();
 
