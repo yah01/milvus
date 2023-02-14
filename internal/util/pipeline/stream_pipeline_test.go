@@ -20,34 +20,40 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/milvus-io/milvus/internal/mq/msgdispatcher"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
+	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
+	"github.com/milvus-io/milvus/internal/proto/internalpb"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
 
 type StreamPipelineSuite struct {
 	suite.Suite
-	pipeline   *streamPipeline
+	pipeline   StreamPipeline
 	inChannel  chan *msgstream.MsgPack
 	outChannel chan msgstream.Timestamp
 	//data
-	length int
+	length  int
+	channel string
 	//mock
-	msgstream *msgstream.MockMsgStream
+	msgDispatcher *msgdispatcher.MockClient
 }
 
 func (suite *StreamPipelineSuite) SetupTest() {
+	suite.channel = "test-channel"
 	suite.inChannel = make(chan *msgstream.MsgPack, 1)
 	suite.outChannel = make(chan msgstream.Timestamp)
-	suite.msgstream = msgstream.NewMockMsgStream(suite.T())
-	suite.msgstream.EXPECT().Chan().Return(suite.inChannel)
-	suite.msgstream.EXPECT().Close().Return()
-	suite.pipeline = NewPipelineWithStream(suite.msgstream, 0, false, "nil").(*streamPipeline)
+	suite.msgDispatcher = msgdispatcher.NewMockClient(suite.T())
+	suite.msgDispatcher.EXPECT().Register(suite.channel, mock.Anything, mqwrapper.SubscriptionPositionUnknown).Return(suite.inChannel, nil)
+	suite.msgDispatcher.EXPECT().Deregister(suite.channel)
+	suite.pipeline = NewPipelineWithStream(suite.msgDispatcher, 0, false, suite.channel)
 	suite.length = 4
 }
 
 func (suite *StreamPipelineSuite) TestBasic() {
 	for i := 1; i <= suite.length; i++ {
-		suite.pipeline.addNode(&testNode{
+		suite.pipeline.Add(&testNode{
 			BaseNode: &BaseNode{
 				name:           fmt.Sprintf("test-node-%d", i),
 				maxQueueLength: 8,
@@ -56,9 +62,12 @@ func (suite *StreamPipelineSuite) TestBasic() {
 		})
 	}
 
+	err := suite.pipeline.ConsumeMsgStream(&internalpb.MsgPosition{})
+	suite.NoError(err)
+
 	suite.pipeline.Start()
 	defer suite.pipeline.Close()
-	suite.pipeline.inputChannel <- &msgstream.MsgPack{}
+	suite.inChannel <- &msgstream.MsgPack{}
 
 	for i := 1; i <= suite.length; i++ {
 		output := <-suite.outChannel

@@ -21,7 +21,7 @@ import (
 	"sync"
 
 	"github.com/milvus-io/milvus/internal/log"
-	"github.com/milvus-io/milvus/internal/mq/msgstream"
+	"github.com/milvus-io/milvus/internal/mq/msgdispatcher"
 	"github.com/milvus-io/milvus/internal/querynodev2/delegator"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
@@ -43,7 +43,7 @@ type manager struct {
 	delegators       *typeutil.ConcurrentMap[string, delegator.ShardDelegator]
 
 	tSafeManager TSafeManager
-	msFactory    msgstream.Factory
+	dispatcher   msgdispatcher.Client
 	mu           sync.Mutex
 }
 
@@ -75,7 +75,7 @@ func (m *manager) Add(collectionID UniqueID, channel string) (Pipeline, error) {
 		return nil, WrapErrShardDelegatorNotFound(channel)
 	}
 
-	newPipeLine, err := NewPipeLine(collectionID, channel, m.dataManager, m.tSafeManager, m.msFactory, delegator)
+	newPipeLine, err := NewPipeLine(collectionID, channel, m.dataManager, m.tSafeManager, m.dispatcher, delegator)
 	if err != nil {
 		return nil, WrapErrNewPipelineFailed(err)
 	}
@@ -143,7 +143,7 @@ func (m *manager) Close() {
 
 func NewManager(dataManager *DataManager,
 	tSafeManager TSafeManager,
-	msFactory msgstream.Factory,
+	dispatcher msgdispatcher.Client,
 	delegators *typeutil.ConcurrentMap[string, delegator.ShardDelegator],
 ) Manager {
 	return &manager{
@@ -151,7 +151,7 @@ func NewManager(dataManager *DataManager,
 		dataManager:      dataManager,
 		delegators:       delegators,
 		tSafeManager:     tSafeManager,
-		msFactory:        msFactory,
+		dispatcher:       dispatcher,
 		mu:               sync.Mutex{},
 	}
 }

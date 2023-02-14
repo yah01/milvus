@@ -19,11 +19,13 @@ package pipeline
 import (
 	"testing"
 
+	"github.com/milvus-io/milvus/internal/mq/msgdispatcher"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
+	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
+	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/querynodev2/delegator"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
 	"github.com/milvus-io/milvus/internal/querynodev2/tsafe"
-	"github.com/milvus-io/milvus/internal/util/dependency"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"github.com/stretchr/testify/mock"
@@ -43,8 +45,7 @@ type PipelineManagerTestSuite struct {
 	segmentManager    *segments.MockSegmentManager
 	collectionManager *segments.MockCollectionManager
 	delegator         *delegator.MockShardDelegator
-	factory           *dependency.MockFactory
-	msgStream         *msgstream.MockMsgStream
+	msgDispatcher     *msgdispatcher.MockClient
 	msgChan           chan *msgstream.MsgPack
 }
 
@@ -68,9 +69,8 @@ func (suite *PipelineManagerTestSuite) SetupTest() {
 	//	init delegator
 	suite.delegator = delegator.NewMockShardDelegator(suite.T())
 	suite.delegators.Insert(suite.channel, suite.delegator)
-	//	init factory
-	suite.factory = dependency.NewMockFactory(suite.T())
-	suite.msgStream = msgstream.NewMockMsgStream(suite.T())
+	//	init mq dispatcher
+	suite.msgDispatcher = msgdispatcher.NewMockClient(suite.T())
 }
 
 func (suite *PipelineManagerTestSuite) TestBasic() {
@@ -78,16 +78,15 @@ func (suite *PipelineManagerTestSuite) TestBasic() {
 	//  mock collection manager
 	suite.collectionManager.EXPECT().Get(suite.collectionID).Return(&segments.Collection{})
 	//  mock mq factory
-	suite.factory.EXPECT().NewTtMsgStream(mock.Anything).Return(suite.msgStream, nil)
-	suite.msgStream.EXPECT().Chan().Return(suite.msgChan)
-	suite.msgStream.EXPECT().Close()
+	suite.msgDispatcher.EXPECT().Register(suite.channel, mock.Anything, mqwrapper.SubscriptionPositionUnknown).Return(suite.msgChan, nil)
+	suite.msgDispatcher.EXPECT().Deregister(suite.channel)
 
 	//build manager
 	manager := &segments.Manager{
 		Collection: suite.collectionManager,
 		Segment:    suite.segmentManager,
 	}
-	pipelineManager := NewManager(manager, suite.tSafeManager, suite.factory, suite.delegators)
+	pipelineManager := NewManager(manager, suite.tSafeManager, suite.msgDispatcher, suite.delegators)
 	defer pipelineManager.Close()
 
 	//Add pipeline
@@ -98,6 +97,10 @@ func (suite *PipelineManagerTestSuite) TestBasic() {
 	//Get pipeline
 	pipeline := pipelineManager.Get(suite.channel)
 	suite.NotNil(pipeline)
+
+	//Init Consumer
+	err = pipeline.ConsumeMsgStream(&internalpb.MsgPosition{})
+	suite.NoError(err)
 
 	//Start pipeline
 	err = pipelineManager.Start(suite.channel)

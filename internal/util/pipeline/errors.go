@@ -16,8 +16,17 @@
 
 package pipeline
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var (
-	ErrEmptyPipeline = errors.New("EmptyPipeline")
+	ErrEmptyPipeline     = errors.New("EmptyPipeline")
+	ErrNilPosition       = errors.New("SeekToNilPosition")
+	ErrRegisterDispather = errors.New("FailToRegisterDispather")
 )
+
+func WrapErrRegDispather(err error) error {
+	return fmt.Errorf("%w :%s", ErrRegisterDispather, err)
+}

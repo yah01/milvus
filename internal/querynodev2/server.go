@@ -48,6 +48,7 @@ import (
 	grpcquerynodeclient "github.com/milvus-io/milvus/internal/distributed/querynode/client"
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/mq/msgdispatcher"
 	"github.com/milvus-io/milvus/internal/querynodev2/cluster"
 	"github.com/milvus-io/milvus/internal/querynodev2/delegator"
 	"github.com/milvus-io/milvus/internal/querynodev2/pipeline"
@@ -107,7 +108,8 @@ type QueryNode struct {
 	etcdCli *clientv3.Client
 	address string
 
-	factory dependency.Factory
+	dispClient msgdispatcher.Client
+	factory    dependency.Factory
 
 	session *sessionutil.Session
 	eventCh <-chan *sessionutil.SessionEvent
@@ -303,8 +305,9 @@ func (node *QueryNode) Init() error {
 		node.subscribingChannels = typeutil.NewConcurrentSet[string]()
 		node.manager = segments.NewManager()
 		node.loader = segments.NewLoader(node.manager.Collection, node.vectorStorage, node.loadPool)
+		node.dispClient = msgdispatcher.NewClient(node.factory, typeutil.DataNodeRole, paramtable.GetNodeID())
 		// init pipeline manager
-		node.pipelineManager = pipeline.NewManager(node.manager, node.tSafeManager, node.factory, node.delegators)
+		node.pipelineManager = pipeline.NewManager(node.manager, node.tSafeManager, node.dispClient, node.delegators)
 
 		node.InitSegcore()
 		if paramtable.Get().QueryNodeCfg.GCEnabled.GetAsBool() {

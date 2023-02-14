@@ -17,10 +17,8 @@
 package pipeline
 
 import (
-	"context"
-
 	"github.com/milvus-io/milvus/internal/log"
-	"github.com/milvus-io/milvus/internal/mq/msgstream"
+	"github.com/milvus-io/milvus/internal/mq/msgdispatcher"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/querynodev2/delegator"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
@@ -56,20 +54,16 @@ func NewPipeLine(
 	channel string,
 	manager *DataManager,
 	tSafeManager TSafeManager,
-	factory msgstream.Factory,
+	dispatcher msgdispatcher.Client,
 	delegator delegator.ShardDelegator,
 ) (Pipeline, error) {
 	pipelineQueueLength := paramtable.Get().QueryNodeCfg.FlowGraphMaxQueueLength.GetAsInt32()
-	dmStream, err := factory.NewTtMsgStream(context.Background())
-	if err != nil {
-		return nil, err
-	}
 	excludedSegments := typeutil.NewConcurrentMap[int64, *datapb.SegmentInfo]()
 
 	p := &pipeline{
 		collectionID:     collectionID,
 		excludedSegments: excludedSegments,
-		StreamPipeline:   base.NewPipelineWithStream(dmStream, nodeCtxTtInterval, enableTtChecker, channel),
+		StreamPipeline:   base.NewPipelineWithStream(dispatcher, nodeCtxTtInterval, enableTtChecker, channel),
 	}
 
 	filterNode := newFilterNode(collectionID, channel, manager, excludedSegments, pipelineQueueLength)

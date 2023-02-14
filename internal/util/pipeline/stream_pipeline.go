@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/mq/msgdispatcher"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
@@ -35,9 +36,10 @@ type StreamPipeline interface {
 
 type streamPipeline struct {
 	*pipeline
-	instream  msgstream.MsgStream
-	startOnce sync.Once
-	vChannel  string
+	input      <-chan *msgstream.MsgPack
+	dispatcher msgdispatcher.Client
+	startOnce  sync.Once
+	vChannel   string
 
 	closeCh   chan struct{} // notify work to exit
 	closeWg   sync.WaitGroup
@@ -51,7 +53,7 @@ func (p *streamPipeline) work() {
 		case <-p.closeCh:
 			log.Debug("stream pipeline input closed")
 			return
-		case msg := <-p.instream.Chan():
+		case msg := <-p.input:
 			log.RatedDebug(10, "stream pipeline fetch msg", zap.Int("sum", len(msg.Msgs)))
 			p.nodes[0].inputChannel <- msg
 		}
@@ -59,18 +61,27 @@ func (p *streamPipeline) work() {
 }
 
 func (p *streamPipeline) ConsumeMsgStream(position *internalpb.MsgPosition) error {
-	p.instream.AsConsumer([]string{position.ChannelName}, position.MsgGroup, mqwrapper.SubscriptionPositionUnknown)
+	var err error
+	if position == nil {
+		log.Error("seek stream to nil position")
+		return ErrNilPosition
+	}
+
 	start := time.Now()
-	err := p.instream.Seek([]*internalpb.MsgPosition{position})
+	p.input, err = p.dispatcher.Register(p.vChannel, position, mqwrapper.SubscriptionPositionUnknown)
+	if err != nil {
+		log.Error("dispatcher register failed", zap.String("channel", position.ChannelName))
+		return WrapErrRegDispather(err)
+	}
 	ts, _ := tsoutil.ParseTS(position.GetTimestamp())
-	log.Info("stream pipeline seeks from position",
+	log.Info("stream pipeline seeks from position with msgDispatcher",
 		zap.String("pchannel", position.ChannelName),
 		zap.String("vchannel", p.vChannel),
 		zap.Time("checkpointTs", ts),
 		zap.Duration("tsLag", time.Since(ts)),
 		zap.Duration("elapse", time.Since(start)),
 	)
-	return err
+	return nil
 }
 
 func (p *streamPipeline) Start() error {
@@ -87,22 +98,22 @@ func (p *streamPipeline) Close() {
 	p.closeOnce.Do(func() {
 		close(p.closeCh)
 		p.closeWg.Wait()
-		p.instream.Close()
+		p.dispatcher.Deregister(p.vChannel)
 		p.pipeline.Close()
 	})
 }
 
-func NewPipelineWithStream(instream msgstream.MsgStream, nodeTtInterval time.Duration, enableTtChecker bool, vChannel string) StreamPipeline {
+func NewPipelineWithStream(dispatcher msgdispatcher.Client, nodeTtInterval time.Duration, enableTtChecker bool, vChannel string) StreamPipeline {
 	pipeline := &streamPipeline{
 		pipeline: &pipeline{
 			nodes:           []*nodeCtx{},
 			nodeTtInterval:  nodeTtInterval,
 			enableTtChecker: enableTtChecker,
 		},
-		instream: instream,
-		vChannel: vChannel,
-		closeCh:  make(chan struct{}),
-		closeWg:  sync.WaitGroup{},
+		dispatcher: dispatcher,
+		vChannel:   vChannel,
+		closeCh:    make(chan struct{}),
+		closeWg:    sync.WaitGroup{},
 	}
 
 	return pipeline
