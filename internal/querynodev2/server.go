@@ -305,7 +305,7 @@ func (node *QueryNode) Init() error {
 		node.subscribingChannels = typeutil.NewConcurrentSet[string]()
 		node.manager = segments.NewManager()
 		node.loader = segments.NewLoader(node.manager.Collection, node.vectorStorage, node.loadPool)
-		node.dispClient = msgdispatcher.NewClient(node.factory, typeutil.DataNodeRole, paramtable.GetNodeID())
+		node.dispClient = msgdispatcher.NewClient(node.factory, typeutil.QueryNodeRole, paramtable.GetNodeID())
 		// init pipeline manager
 		node.pipelineManager = pipeline.NewManager(node.manager, node.tSafeManager, node.dispClient, node.delegators)
 

@@ -267,13 +267,12 @@ func (node *QueryNode) WatchDmChannels(ctx context.Context, req *querypb.WatchDm
 		log.Warn(msg, zap.Error(err))
 		return util.WrapStatus(commonpb.ErrorCode_UnexpectedError, msg, err), nil
 	}
-	//init pipeline stream and start pipeline
-	position := channel.SeekPosition
-	//	use pChannel instead vChannel
-	position.ChannelName = funcutil.ToPhysicalChannel(position.ChannelName)
-	//	generate msgGroup name
-	position.MsgGroup = funcutil.GenChannelSubName(paramtable.Get().CommonCfg.QueryNodeSubName.GetValue(), req.CollectionID, paramtable.GetNodeID())
-	err = pipeline.ConsumeMsgStream(channel.SeekPosition)
+	position := &internalpb.MsgPosition{
+		ChannelName: channel.SeekPosition.ChannelName,
+		MsgID:       channel.SeekPosition.MsgID,
+		Timestamp:   channel.SeekPosition.Timestamp,
+	}
+	err = pipeline.ConsumeMsgStream(position)
 	if err != nil {
 		err = WrapErrInitPipelineFailed(err)
 		log.Warn(err.Error(),
