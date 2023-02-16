@@ -88,10 +88,6 @@ func (c *SegmentChecker) checkReplica(ctx context.Context, replica *meta.Replica
 	tasks = c.createSegmentReduceTasks(ctx, redundancies, replica.GetID(), querypb.DataScope_All)
 	ret = append(ret, tasks...)
 
-	// outdated := c.getOutdatedSegment(c.targetMgr, c.dist, c.meta, replica.GetCollectionID(), replica.GetID())
-	// tasks = c.createSegmentUpdateDeltaTasks(ctx, outdated, replica.GetID())
-	// ret = append(ret, tasks...)
-
 	// compare inner dists to find repeated loaded segments
 	redundancies = c.findRepeatedHistoricalSegments(c.dist, c.meta, replica.GetID())
 	redundancies = c.filterExistedOnLeader(replica, redundancies)

@@ -79,7 +79,6 @@ type SegmentAction struct {
 	segmentID UniqueID
 	scope     querypb.DataScope
 
-	// loadDeltaOnly      bool
 	isReleaseCommitted atomic.Bool
 }
 

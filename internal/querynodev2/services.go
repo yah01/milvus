@@ -182,7 +182,7 @@ func (node *QueryNode) WatchDmChannels(ctx context.Context, req *querypb.WatchDm
 		zap.String("channel", channel.GetChannelName()),
 	)
 
-	log.Debug("received watch channel request",
+	log.Info("received watch channel request",
 		zap.Int64("version", req.GetVersion()),
 	)
 
@@ -286,7 +286,7 @@ func (node *QueryNode) WatchDmChannels(ctx context.Context, req *querypb.WatchDm
 	pipeline.Start()
 	// delegator after all steps done
 	delegator.Start()
-	log.Debug("watch dml channel success")
+	log.Info("watch dml channel success")
 	return util.SuccessStatus(), nil
 }
 
@@ -296,7 +296,7 @@ func (node *QueryNode) UnsubDmChannel(ctx context.Context, req *querypb.UnsubDmC
 		zap.String("channel", req.GetChannelName()),
 	)
 
-	log.Debug("received unsubscribe channel request")
+	log.Info("received unsubscribe channel request")
 
 	// check node healthy
 	if !node.lifetime.Add(commonpbutil.IsHealthy) {
@@ -327,7 +327,7 @@ func (node *QueryNode) UnsubDmChannel(ctx context.Context, req *querypb.UnsubDmC
 	node.manager.Segment.RemoveBy(segments.WithChannel(req.GetChannelName()))
 	node.tSafeManager.Remove(req.GetChannelName())
 
-	log.Debug("unsubscribed channel")
+	log.Info("unsubscribed channel")
 
 	return util.SuccessStatus(), nil
 }
@@ -343,7 +343,7 @@ func (node *QueryNode) LoadSegments(ctx context.Context, req *querypb.LoadSegmen
 		zap.Int64("segmentID", segment.GetSegmentID()),
 	)
 
-	log.Debug("received load segments request",
+	log.Info("received load segments request",
 		zap.Int64("version", req.GetVersion()),
 		zap.Bool("needTransfer", req.GetNeedTransfer()),
 	)
@@ -437,7 +437,7 @@ func (node *QueryNode) ReleaseSegments(ctx context.Context, req *querypb.Release
 		zap.Int64s("segmentIDs", req.GetSegmentIDs()),
 	)
 
-	log.Debug("received release segment request",
+	log.Info("received release segment request",
 		zap.String("scope", req.GetScope().String()),
 		zap.Bool("needTransfer", req.GetNeedTransfer()),
 	)
