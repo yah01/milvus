@@ -24,9 +24,12 @@ package segments
 */
 import "C"
 import (
+	"fmt"
 	"sync"
 
+	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
 	. "github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
@@ -117,7 +120,26 @@ func (mgr *segmentManager) Put(segmentType SegmentType, segments ...Segment) {
 	}
 
 	for _, segment := range segments {
+		if _, ok := targetMap[segment.ID()]; ok {
+			continue
+		}
 		targetMap[segment.ID()] = segment
+		metrics.QueryNodeNumSegments.WithLabelValues(
+			fmt.Sprint(paramtable.GetNodeID()),
+			fmt.Sprint(segment.Collection()),
+			fmt.Sprint(segment.Partition()),
+			segment.Type().String(),
+			fmt.Sprint(len(segment.Indexes())),
+		).Inc()
+		if segment.RowNum() > 0 {
+			metrics.QueryNodeNumEntities.WithLabelValues(
+				fmt.Sprint(paramtable.GetNodeID()),
+				fmt.Sprint(segment.Collection()),
+				fmt.Sprint(segment.Partition()),
+				segment.Type().String(),
+				fmt.Sprint(len(segment.Indexes())),
+			).Add(float64(segment.RowNum()))
+		}
 	}
 }
 
@@ -239,4 +261,22 @@ func remove(segmentID int64, container map[int64]Segment) {
 	}
 	delete(container, segmentID)
 	DeleteSegment(segment.(*LocalSegment))
+	metrics.QueryNodeNumSegments.WithLabelValues(
+		fmt.Sprint(paramtable.GetNodeID()),
+		fmt.Sprint(segment.Collection()),
+		fmt.Sprint(segment.Partition()),
+		segment.Type().String(),
+		fmt.Sprint(len(segment.Indexes())),
+	).Dec()
+
+	rowNum := segment.RowNum()
+	if rowNum > 0 {
+		metrics.QueryNodeNumEntities.WithLabelValues(
+			fmt.Sprint(paramtable.GetNodeID()),
+			fmt.Sprint(segment.Collection()),
+			fmt.Sprint(segment.Partition()),
+			segment.Type().String(),
+			fmt.Sprint(len(segment.Indexes())),
+		).Sub(float64(rowNum))
+	}
 }

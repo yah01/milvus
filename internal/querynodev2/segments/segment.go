@@ -84,8 +84,7 @@ type Segment interface {
 	// Stats related
 	// InsertCount returns the number of inserted rows, not effected by deletion
 	InsertCount() int64
-	// RowNum returns the number of rows, which equals to InsertCount() - DeleteCount(),
-	// so it may be not accurate as the deleted row not existing
+	// RowNum returns the number of rows, it's slow, so DO NOT call it in a loop
 	RowNum() int64
 	MemSize() int64
 
@@ -93,6 +92,7 @@ type Segment interface {
 	AddIndex(fieldID int64, index *IndexedFieldInfo)
 	GetIndex(fieldID int64) *IndexedFieldInfo
 	ExistIndex(fieldID int64) bool
+	Indexes() []*IndexedFieldInfo
 
 	// Modification related
 	Insert(rowIDs []int64, timestamps []typeutil.Timestamp, record *segcorepb.InsertRecord) error
@@ -268,6 +268,15 @@ func (s *LocalSegment) ExistIndex(fieldID int64) bool {
 		return false
 	}
 	return fieldInfo.IndexInfo != nil && fieldInfo.IndexInfo.EnableIndex
+}
+
+func (s *LocalSegment) Indexes() []*IndexedFieldInfo {
+	var result []*IndexedFieldInfo
+	s.fieldIndexes.Range(func(key int64, value *IndexedFieldInfo) bool {
+		result = append(result, value)
+		return true
+	})
+	return result
 }
 
 func (s *LocalSegment) Type() SegmentType {
