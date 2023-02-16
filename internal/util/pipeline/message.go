@@ -16,5 +16,4 @@
 
 package pipeline
 
-type Msg interface {
-}
+type Msg interface{}

@@ -171,12 +171,6 @@ func (node *QueryNode) Register() error {
 	return nil
 }
 
-// TODO Add global collector
-// initRateCollector creates and starts rateCollector in QueryNode.
-func (node *QueryNode) initCollector() error {
-	return nil
-}
-
 // InitSegcore set init params of segCore, such as chunckRows, SIMD type...
 func (node *QueryNode) InitSegcore() {
 	cEasyloggingYaml := C.CString(path.Join(paramtable.Get().BaseTable.GetConfigDir(), paramtable.DefaultEasyloggingYaml))
