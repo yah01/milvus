@@ -260,7 +260,10 @@ func remove(segmentID int64, container map[int64]Segment) {
 		return
 	}
 	delete(container, segmentID)
+
+	rowNum := segment.RowNum()
 	DeleteSegment(segment.(*LocalSegment))
+
 	metrics.QueryNodeNumSegments.WithLabelValues(
 		fmt.Sprint(paramtable.GetNodeID()),
 		fmt.Sprint(segment.Collection()),
@@ -268,8 +271,6 @@ func remove(segmentID int64, container map[int64]Segment) {
 		segment.Type().String(),
 		fmt.Sprint(len(segment.Indexes())),
 	).Dec()
-
-	rowNum := segment.RowNum()
 	if rowNum > 0 {
 		metrics.QueryNodeNumEntities.WithLabelValues(
 			fmt.Sprint(paramtable.GetNodeID()),
