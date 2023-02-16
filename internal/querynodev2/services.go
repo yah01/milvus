@@ -579,6 +579,8 @@ func (node *QueryNode) Search(ctx context.Context, req *querypb.SearchRequest) (
 			common.WrapNodeIDNotMatchMsg(targetID, paramtable.GetNodeID())), nil
 	}
 
+	metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.SearchLabel, metrics.TotalLabel).Inc()
+
 	failRet := &internalpb.SearchResults{
 		Status: &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_Success,
@@ -615,6 +617,7 @@ func (node *QueryNode) Search(ctx context.Context, req *querypb.SearchRequest) (
 		})
 	}
 	if err := runningGp.Wait(); err != nil {
+		metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.SearchLabel, metrics.FailLabel).Inc()
 		return failRet, nil
 	}
 	ret, err := segments.ReduceSearchResults(ctx, toReduceResults, req.Req.GetNq(), req.Req.GetTopk(), req.Req.GetMetricType())

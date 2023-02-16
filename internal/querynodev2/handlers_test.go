@@ -64,13 +64,13 @@ func (suite *HandlersSuite) SetupTest() {
 	suite.params = paramtable.Get()
 	suite.params.Save(suite.params.QueryNodeCfg.GCEnabled.Key, "false")
 
-	//mock factory
+	// mock factory
 	suite.factory = dependency.NewMockFactory(suite.T())
 	suite.chunkManagerFactory = storage.NewChunkManagerFactory("local", storage.RootPath("/tmp/milvus_test"))
 
-	//new node
+	// new node
 	suite.node = NewQueryNode(context.Background(), suite.factory)
-	//init etcd
+	// init etcd
 	suite.etcd, err = etcd.GetEtcdClient(
 		suite.params.EtcdCfg.UseEmbedEtcd.GetAsBool(),
 		suite.params.EtcdCfg.EtcdUseSSL.GetAsBool(),
@@ -90,7 +90,7 @@ func (suite *HandlersSuite) TearDownTest() {
 func (suite *HandlersSuite) TestLoadGrowingSegments() {
 	ctx := context.Background()
 	var err error
-	//mock
+	// mock
 	loadSegmetns := []int64{}
 	delegator := delegator.NewMockShardDelegator(suite.T())
 	delegator.EXPECT().LoadGrowing(mock.Anything, mock.Anything, mock.Anything).Run(func(ctx context.Context, infos []*querypb.SegmentLoadInfo, version int64) {
@@ -110,12 +110,12 @@ func (suite *HandlersSuite) TestLoadGrowingSegments() {
 		SegmentInfos: make(map[int64]*datapb.SegmentInfo),
 	}
 
-	//unflushed segment not in segmentInfos, will skip
+	// unflushed segment not in segmentInfos, will skip
 	err = loadGrowingSegments(ctx, delegator, req)
 	suite.NoError(err)
 	suite.Equal(0, len(loadSegmetns))
 
-	//binlog was empty, will skip
+	// binlog was empty, will skip
 	req.SegmentInfos[suite.segmentID] = &datapb.SegmentInfo{
 		ID:           suite.segmentID,
 		CollectionID: suite.collectionID,
@@ -125,7 +125,7 @@ func (suite *HandlersSuite) TestLoadGrowingSegments() {
 	suite.NoError(err)
 	suite.Equal(0, len(loadSegmetns))
 
-	//normal load
+	// normal load
 	binlog := &datapb.FieldBinlog{}
 	req.SegmentInfos[suite.segmentID].Binlogs = append(req.SegmentInfos[suite.segmentID].Binlogs, binlog)
 	err = loadGrowingSegments(ctx, delegator, req)

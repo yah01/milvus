@@ -34,16 +34,16 @@ import (
 
 type QueryNodeSuite struct {
 	suite.Suite
-	//data
+	// data
 	address string
 
-	//dependency
+	// dependency
 	params              *paramtable.ComponentParam
 	node                *QueryNode
 	etcd                *clientv3.Client
 	chunkManagerFactory *storage.ChunkManagerFactory
 
-	//mock
+	// mock
 	factory *dependency.MockFactory
 }
 
@@ -58,12 +58,12 @@ func (suite *QueryNodeSuite) SetupTest() {
 	suite.params = paramtable.Get()
 	suite.params.Save(suite.params.QueryNodeCfg.GCEnabled.Key, "false")
 
-	//mock factory
+	// mock factory
 	suite.factory = dependency.NewMockFactory(suite.T())
 	suite.chunkManagerFactory = storage.NewChunkManagerFactory("local", storage.RootPath("/tmp/milvus_test"))
-	//new node
+	// new node
 	suite.node = NewQueryNode(context.Background(), suite.factory)
-	//init etcd
+	// init etcd
 	suite.etcd, err = etcd.GetEtcdClient(
 		suite.params.EtcdCfg.UseEmbedEtcd.GetAsBool(),
 		suite.params.EtcdCfg.EtcdUseSSL.GetAsBool(),
@@ -80,7 +80,7 @@ func (suite *QueryNodeSuite) TearDownTest() {
 	os.RemoveAll("/tmp/milvus-test")
 }
 func (suite *QueryNodeSuite) TestBasic() {
-	//mock expect
+	// mock expect
 	suite.factory.EXPECT().Init(mock.Anything).Return()
 	suite.factory.EXPECT().NewPersistentStorageChunkManager(mock.Anything).Return(suite.chunkManagerFactory.NewPersistentStorageChunkManager(context.Background()))
 
@@ -89,31 +89,31 @@ func (suite *QueryNodeSuite) TestBasic() {
 	err = suite.node.Init()
 	suite.NoError(err)
 
-	//node shoule be unhealthy before node start
+	// node shoule be unhealthy before node start
 	suite.False(suite.node.lifetime.GetState() == commonpb.StateCode_Healthy)
 
-	//start node
+	// start node
 	err = suite.node.Start()
 	suite.NoError(err)
 
-	//node shoule be healthy after node start
+	// node shoule be healthy after node start
 	suite.True(suite.node.lifetime.GetState() == commonpb.StateCode_Healthy)
 
-	//register node to etcd
+	// register node to etcd
 	suite.node.session.TriggerKill = false
 	err = suite.node.Register()
 	suite.NoError(err)
 
-	//set and get address
+	// set and get address
 	suite.node.SetAddress(suite.address)
 	address := suite.node.GetAddress()
 	suite.Equal(suite.address, address)
 
-	//close node
+	// close node
 	err = suite.node.Stop()
 	suite.NoError(err)
 
-	//node should be unhealthy after node stop
+	// node should be unhealthy after node stop
 	suite.False(suite.node.lifetime.GetState() == commonpb.StateCode_Healthy)
 }
 

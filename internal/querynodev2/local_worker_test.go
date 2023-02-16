@@ -34,7 +34,7 @@ import (
 type LocalWorkerTestSuite struct {
 	suite.Suite
 	params *paramtable.ComponentParam
-	//data
+	// data
 	collectionID   int64
 	collectionName string
 	channel        string
@@ -42,11 +42,11 @@ type LocalWorkerTestSuite struct {
 	segmentIDs     []int64
 	schema         *schemapb.CollectionSchema
 
-	//dependency
+	// dependency
 	node       *QueryNode
 	worker     *LocalWorker
 	etcdClient *clientv3.Client
-	//context
+	// context
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -61,14 +61,14 @@ func (suite *LocalWorkerTestSuite) SetupSuite() {
 
 func (suite *LocalWorkerTestSuite) BeforeTest(suiteName, testName string) {
 	var err error
-	//init param
+	// init param
 	paramtable.Init()
 	suite.params = paramtable.Get()
-	//close GC at test to avoid data race
+	// close GC at test to avoid data race
 	suite.params.Save(suite.params.QueryNodeCfg.GCEnabled.Key, "false")
 
 	suite.ctx, suite.cancel = context.WithCancel(context.Background())
-	//init node
+	// init node
 	factory := dependency.NewDefaultFactory(true)
 	suite.node = NewQueryNode(suite.ctx, factory)
 	//	init etcd
@@ -104,7 +104,7 @@ func (suite *LocalWorkerTestSuite) AfterTest(suiteName, testName string) {
 }
 
 func (suite *LocalWorkerTestSuite) TestLoadSegment() {
-	//load empty
+	// load empty
 	req := &querypb.LoadSegmentsRequest{
 		CollectionID: suite.collectionID,
 		Infos: lo.Map(suite.segmentIDs, func(segID int64, _ int) *querypb.SegmentLoadInfo {

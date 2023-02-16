@@ -29,6 +29,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 	"github.com/milvus-io/milvus/internal/querynodev2/delegator"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
+	"github.com/milvus-io/milvus/internal/querynodev2/tasks"
 	"github.com/milvus-io/milvus/internal/util"
 	"github.com/milvus-io/milvus/internal/util/commonpbutil"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
@@ -133,7 +134,7 @@ func (node *QueryNode) queryChannel(ctx context.Context, req *querypb.QueryReque
 	queryCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	//TODO From Shard Delegator
+	// TODO From Shard Delegator
 	if req.FromShardLeader {
 		tr := timerecord.NewTimeRecorder("queryChannel")
 		results, err := node.querySegments(queryCtx, req)
@@ -151,15 +152,15 @@ func (node *QueryNode) queryChannel(ctx context.Context, req *querypb.QueryReque
 		))
 
 		failRet.Status.ErrorCode = commonpb.ErrorCode_Success
-		//TODO QueryNodeSQLatencyInQueue QueryNodeReduceLatency
+		// TODO QueryNodeSQLatencyInQueue QueryNodeReduceLatency
 		latency := tr.ElapseSpan()
 		metrics.QueryNodeSQReqLatency.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.QueryLabel, metrics.FromLeader).Observe(float64(latency.Milliseconds()))
 		metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.QueryLabel, metrics.SuccessLabel).Inc()
 		return results, nil
 	}
-	//From Proxy
+	// From Proxy
 	tr := timerecord.NewTimeRecorder("queryDelegator")
-	//get delegator
+	// get delegator
 	sd, ok := node.delegators.Get(channel)
 	if !ok {
 		log.Warn("Query failed, failed to get query shard delegator", zap.Error(ErrGetDelegatorFailed))
@@ -214,7 +215,7 @@ func (node *QueryNode) querySegments(ctx context.Context, req *querypb.QueryRequ
 	if collection == nil {
 		return nil, segments.ErrCollectionNotFound
 	}
-	//build plan
+	// build plan
 	retrievePlan, err := segments.NewRetrievePlan(
 		collection,
 		req.Req.GetSerializedExprPlan(),
@@ -255,24 +256,10 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 		zap.String("channel", channel),
 		zap.String("scope", req.GetScope().String()),
 	)
-	failRet := &internalpb.SearchResults{
-		Status: &commonpb.Status{
-			ErrorCode: commonpb.ErrorCode_UnexpectedError,
-		},
-	}
 	traceID := trace.SpanFromContext(ctx).SpanContext().TraceID()
 
-	//update metric to prometheus
-	metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.SearchLabel, metrics.TotalLabel).Inc()
-	defer func() {
-		if failRet.Status.ErrorCode != commonpb.ErrorCode_Success {
-			metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.SearchLabel, metrics.FailLabel).Inc()
-		}
-	}()
-
 	if !node.lifetime.Add(commonpbutil.IsHealthy) {
-		failRet.Status.Reason = msgQueryNodeIsUnhealthy(paramtable.GetNodeID())
-		return failRet, nil
+		return nil, WrapErrNodeUnhealthy(paramtable.GetNodeID())
 	}
 	defer node.lifetime.Done()
 
@@ -283,16 +270,26 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 	searchCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	//TODO From Shard Delegator
+	// TODO From Shard Delegator
 	if req.GetFromShardLeader() {
 		tr := timerecord.NewTimeRecorder("searchChannel")
 		log.Debug("search channel...")
 
-		results, err := node.searchSegments(searchCtx, req)
+		collection := node.manager.Collection.Get(req.Req.GetCollectionID())
+		if collection == nil {
+			log.Warn("failed to search channel", zap.Error(segments.ErrCollectionNotFound))
+			return nil, segments.WrapCollectionNotFound(req.GetReq().GetCollectionID())
+		}
+
+		task := tasks.NewSearchTask(searchCtx, collection, node.manager, req)
+		if !node.scheduler.Add(task) {
+			log.Warn("failed to search channel", zap.Error(tasks.ErrTaskQueueFull))
+			return nil, tasks.ErrTaskQueueFull
+		}
+
+		err := task.Wait()
 		if err != nil {
 			log.Warn("failed to search channel", zap.Error(err))
-			failRet.Status.Reason = err.Error()
-			return failRet, nil
 		}
 
 		tr.CtxElapse(ctx, fmt.Sprintf("search channel done, channel = %s, segmentIDs = %v",
@@ -300,29 +297,26 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 			req.GetSegmentIDs(),
 		))
 
-		failRet.Status.ErrorCode = commonpb.ErrorCode_Success
-		//TODO QueryNodeSQLatencyInQueue QueryNodeReduceLatency
+		// TODO QueryNodeSQLatencyInQueue QueryNodeReduceLatency
 		latency := tr.ElapseSpan()
 		metrics.QueryNodeSQReqLatency.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.SearchLabel, metrics.FromLeader).Observe(float64(latency.Milliseconds()))
 		metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.SearchLabel, metrics.SuccessLabel).Inc()
-		return results, nil
+		return task.Result(), nil
 	}
 
-	//From Proxy
+	// From Proxy
 	tr := timerecord.NewTimeRecorder("searchDelegator")
-	//get delegator
+	// get delegator
 	sd, ok := node.delegators.Get(channel)
 	if !ok {
 		log.Warn("Query failed, failed to get query shard delegator", zap.Error(ErrGetDelegatorFailed))
-		failRet.Status.Reason = ErrGetDelegatorFailed.Error()
-		return failRet, nil
+		return nil, ErrGetDelegatorFailed
 	}
-	//do search
+	// do search
 	results, err := sd.Search(searchCtx, req)
 	if err != nil {
 		log.Warn("failed to search on delegator", zap.Error(err))
-		failRet.Status.Reason = err.Error()
-		return failRet, nil
+		return nil, err
 	}
 
 	// reduce result
@@ -335,8 +329,7 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 
 	ret, err := segments.ReduceSearchResults(ctx, results, req.Req.GetNq(), req.Req.GetTopk(), req.Req.GetMetricType())
 	if err != nil {
-		failRet.Status.Reason = err.Error()
-		return failRet, nil
+		return nil, err
 	}
 
 	tr.CtxElapse(ctx, fmt.Sprintf("do search with channel done , vChannel = %s, segmentIDs = %v",
@@ -344,8 +337,7 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 		req.GetSegmentIDs(),
 	))
 
-	//update metric to prometheus
-	failRet.Status.ErrorCode = commonpb.ErrorCode_Success
+	// update metric to prometheus
 	latency := tr.ElapseSpan()
 	metrics.QueryNodeSQReqLatency.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.SearchLabel, metrics.Leader).Observe(float64(latency.Milliseconds()))
 	metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.SearchLabel, metrics.SuccessLabel).Inc()
@@ -410,7 +402,7 @@ func (node *QueryNode) searchSegments(ctx context.Context, req *querypb.SearchRe
 		return nil, err
 	}
 
-	//tips:blob is unsafe because get from C
+	// tips:blob is unsafe because get from C
 	bs := make([]byte, len(blob))
 	copy(bs, blob)
 

@@ -53,6 +53,7 @@ import (
 	"github.com/milvus-io/milvus/internal/querynodev2/delegator"
 	"github.com/milvus-io/milvus/internal/querynodev2/pipeline"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
+	"github.com/milvus-io/milvus/internal/querynodev2/tasks"
 	"github.com/milvus-io/milvus/internal/querynodev2/tsafe"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/types"
@@ -86,23 +87,22 @@ type QueryNode struct {
 
 	lifetime lifetime.Lifetime[commonpb.StateCode]
 
-	//call once
+	// call once
 	initOnce sync.Once
 
 	// internal components
-	manager        *segments.Manager
-	clusterManager cluster.Manager
-
-	// tSafeManager
-	tSafeManager tsafe.Manager
-
-	// dataSyncService
+	manager             *segments.Manager
+	clusterManager      cluster.Manager
+	tSafeManager        tsafe.Manager
 	pipelineManager     pipeline.Manager
 	subscribingChannels *typeutil.ConcurrentSet[string]
 	delegators          *typeutil.ConcurrentMap[string, delegator.ShardDelegator]
 
 	// segment loader
 	loader segments.Loader
+
+	// Search/Query
+	scheduler *tasks.Scheduler
 
 	// etcd client
 	etcdCli *clientv3.Client
@@ -166,8 +166,8 @@ func (node *QueryNode) Register() error {
 		}
 	})
 
-	//TODO Reset the logger
-	//paramtable.Get().initLogCfg()
+	// TODO Reset the logger
+	// paramtable.Get().initLogCfg()
 	return nil
 }
 
@@ -209,7 +209,7 @@ func (node *QueryNode) InitSegcore() {
 func (node *QueryNode) Init() error {
 	var initError error
 	node.initOnce.Do(func() {
-		//ctx := context.Background()
+		// ctx := context.Background()
 		log.Info("QueryNode session info", zap.String("metaPath", paramtable.Get().EtcdCfg.MetaRootPath.GetValue()))
 		err := node.initSession()
 		if err != nil {
@@ -269,6 +269,7 @@ func (node *QueryNode) Init() error {
 			initError = err
 			return
 		}
+		node.scheduler = tasks.NewScheduler()
 
 		node.clusterManager = cluster.NewWorkerManager(func(nodeID int64) (cluster.Worker, error) {
 			if nodeID == paramtable.GetNodeID() {
@@ -327,6 +328,8 @@ func (node *QueryNode) Init() error {
 
 // Start mainly start QueryNode's query service.
 func (node *QueryNode) Start() error {
+	go node.scheduler.Schedule(node.ctx)
+
 	paramtable.SetCreateTime(time.Now())
 	paramtable.SetUpdateTime(time.Now())
 	node.UpdateStateCode(commonpb.StateCode_Healthy)
