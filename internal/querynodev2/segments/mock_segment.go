@@ -241,6 +241,44 @@ func (_c *MockSegment_ID_Call) Return(_a0 int64) *MockSegment_ID_Call {
 	return _c
 }
 
+// Indexes provides a mock function with given fields:
+func (_m *MockSegment) Indexes() []*IndexedFieldInfo {
+	ret := _m.Called()
+
+	var r0 []*IndexedFieldInfo
+	if rf, ok := ret.Get(0).(func() []*IndexedFieldInfo); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*IndexedFieldInfo)
+		}
+	}
+
+	return r0
+}
+
+// MockSegment_Indexes_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Indexes'
+type MockSegment_Indexes_Call struct {
+	*mock.Call
+}
+
+// Indexes is a helper method to define mock.On call
+func (_e *MockSegment_Expecter) Indexes() *MockSegment_Indexes_Call {
+	return &MockSegment_Indexes_Call{Call: _e.mock.On("Indexes")}
+}
+
+func (_c *MockSegment_Indexes_Call) Run(run func()) *MockSegment_Indexes_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockSegment_Indexes_Call) Return(_a0 []*IndexedFieldInfo) *MockSegment_Indexes_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
 // Insert provides a mock function with given fields: rowIDs, timestamps, record
 func (_m *MockSegment) Insert(rowIDs []int64, timestamps []uint64, record *segcorepb.InsertRecord) error {
 	ret := _m.Called(rowIDs, timestamps, record)
