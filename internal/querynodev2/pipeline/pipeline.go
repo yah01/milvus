@@ -18,6 +18,7 @@ package pipeline
 
 import (
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/mq/msgdispatcher"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/querynodev2/delegator"
@@ -47,6 +48,11 @@ func (p *pipeline) ExcludedSegments(segInfos ...*datapb.SegmentInfo) {
 		)
 		p.excludedSegments.Insert(segInfo.GetID(), segInfo)
 	}
+}
+
+func (p *pipeline) Close() {
+	p.StreamPipeline.Close()
+	metrics.CleanupQueryNodeCollectionMetrics(paramtable.GetNodeID(), p.collectionID)
 }
 
 func NewPipeLine(

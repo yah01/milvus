@@ -59,6 +59,13 @@ func WithID(id int64) SegmentFilter {
 	}
 }
 
+type actionType int32
+
+const (
+	removeAction actionType = iota
+	addAction
+)
+
 type Manager struct {
 	Collection CollectionManager
 	Segment    SegmentManager
@@ -141,6 +148,7 @@ func (mgr *segmentManager) Put(segmentType SegmentType, segments ...Segment) {
 			).Add(float64(segment.RowNum()))
 		}
 	}
+	mgr.updateMetric()
 }
 
 func (mgr *segmentManager) Get(segmentID UniqueID) Segment {
@@ -235,6 +243,7 @@ func (mgr *segmentManager) Remove(segmentID UniqueID, scope querypb.DataScope) {
 		remove(segmentID, mgr.growingSegments)
 		remove(segmentID, mgr.sealedSegments)
 	}
+	mgr.updateMetric()
 }
 
 func (mgr *segmentManager) RemoveBy(filters ...SegmentFilter) {
@@ -252,6 +261,22 @@ func (mgr *segmentManager) RemoveBy(filters ...SegmentFilter) {
 			remove(id, mgr.sealedSegments)
 		}
 	}
+	mgr.updateMetric()
+}
+
+func (mgr *segmentManager) updateMetric() {
+	// update collection and partiation metric
+	var collections, partiations Set[int64]
+	for _, seg := range mgr.growingSegments {
+		collections.Insert(seg.Collection())
+		partiations.Insert(seg.Partition())
+	}
+	for _, seg := range mgr.sealedSegments {
+		collections.Insert(seg.Collection())
+		partiations.Insert(seg.Partition())
+	}
+	metrics.QueryNodeNumCollections.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Set(float64(collections.Len()))
+	metrics.QueryNodeNumPartitions.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Set(float64(partiations.Len()))
 }
 
 func remove(segmentID int64, container map[int64]Segment) {

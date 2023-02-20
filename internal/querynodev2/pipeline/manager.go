@@ -21,9 +21,11 @@ import (
 	"sync"
 
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/mq/msgdispatcher"
 	"github.com/milvus-io/milvus/internal/querynodev2/delegator"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"go.uber.org/zap"
 )
@@ -81,6 +83,8 @@ func (m *manager) Add(collectionID UniqueID, channel string) (Pipeline, error) {
 	}
 
 	m.channel2Pipeline[channel] = newPipeLine
+	metrics.QueryNodeNumFlowGraphs.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Inc()
+	metrics.QueryNodeNumDmlChannels.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Inc()
 	return newPipeLine, nil
 }
 
@@ -112,6 +116,8 @@ func (m *manager) Remove(channels ...string) {
 			log.Warn("pipeline to be removed doesn't existed", zap.Any("channel", channel))
 		}
 	}
+	metrics.QueryNodeNumFlowGraphs.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Dec()
+	metrics.QueryNodeNumDmlChannels.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Dec()
 }
 
 //Start pipeline by channel

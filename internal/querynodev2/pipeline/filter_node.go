@@ -20,11 +20,14 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
 	base "github.com/milvus-io/milvus/internal/util/pipeline"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"go.uber.org/zap"
@@ -55,6 +58,14 @@ func (fNode *filterNode) Operate(in Msg) Msg {
 			zap.String("name", fNode.Name()))
 		return nil
 	}
+
+	metrics.QueryNodeConsumerMsgCount.
+		WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), fmt.Sprint(fNode.collectionID)).
+		Inc()
+
+	metrics.QueryNodeConsumeTimeTickLag.
+		WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), fmt.Sprint(fNode.collectionID)).
+		Set(float64(streamMsgPack.EndTs))
 
 	//Get collection from collection manager
 	collection := fNode.manager.Collection.Get(fNode.collectionID)
@@ -92,18 +103,23 @@ func (fNode *filterNode) Operate(in Msg) Msg {
 
 //filtrate message with filter policy
 func (fNode *filterNode) filtrate(c *Collection, msg msgstream.TsMsg) error {
+
 	switch msg.Type() {
 	case commonpb.MsgType_Insert:
+		insertMsg := msg.(*msgstream.InsertMsg)
+		metrics.QueryNodeConsumeCounter.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.InsertLabel).Add(float64(proto.Size(insertMsg)))
 		for _, policy := range fNode.InsertMsgPolicys {
-			err := policy(fNode, c, msg.(*msgstream.InsertMsg))
+			err := policy(fNode, c, insertMsg)
 			if err != nil {
 				return err
 			}
 		}
 
 	case commonpb.MsgType_Delete:
+		deleteMsg := msg.(*msgstream.DeleteMsg)
+		metrics.QueryNodeConsumeCounter.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.InsertLabel).Add(float64(proto.Size(deleteMsg)))
 		for _, policy := range fNode.DeleteMsgPolicys {
-			err := policy(fNode, c, msg.(*msgstream.DeleteMsg))
+			err := policy(fNode, c, deleteMsg)
 			if err != nil {
 				return err
 			}
