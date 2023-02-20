@@ -2,12 +2,14 @@ package tasks
 
 import (
 	"context"
+	"fmt"
 	"runtime"
-	"sync"
 
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/util/concurrency"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
+	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"github.com/panjf2000/ants/v2"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -18,11 +20,9 @@ const (
 )
 
 type Scheduler struct {
-	rwmutex sync.RWMutex
-
 	searchProcessNum  *atomic.Int32
 	searchWaitQueue   chan *SearchTask
-	mergedSearchTasks []*SearchTask
+	mergedSearchTasks typeutil.Set[*SearchTask]
 
 	queryProcessQueue chan *QueryTask
 	queryWaitQueue    chan *QueryTask
@@ -37,8 +37,9 @@ func NewScheduler() *Scheduler {
 		log.Fatal("failed to create pool", zap.Error(err))
 	}
 	return &Scheduler{
-		searchProcessNum: atomic.NewInt32(0),
-		searchWaitQueue:  make(chan *SearchTask, maxWaitTaskNum),
+		searchProcessNum:  atomic.NewInt32(0),
+		searchWaitQueue:   make(chan *SearchTask, maxWaitTaskNum),
+		mergedSearchTasks: typeutil.NewSet[*SearchTask](),
 		// queryProcessQueue: make(chan),
 
 		pool: pool,
@@ -50,6 +51,7 @@ func (s *Scheduler) Add(task Task) bool {
 	case *SearchTask:
 		select {
 		case s.searchWaitQueue <- t:
+			metrics.QueryNodeReadTaskUnsolveLen.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Inc()
 		default:
 			return false
 		}
@@ -64,15 +66,13 @@ func (s *Scheduler) Add(task Task) bool {
 func (s *Scheduler) Schedule(ctx context.Context) {
 	for {
 		if len(s.mergedSearchTasks) > 0 {
-			leftTasks := make([]*SearchTask, 0, len(s.mergedSearchTasks))
-			for _, task := range s.mergedSearchTasks {
+			for task := range s.mergedSearchTasks {
 				if !s.tryPromote(task) {
-					leftTasks = append(leftTasks, task)
 					break
 				}
 				s.process(task)
+				s.mergedSearchTasks.Remove(task)
 			}
-			s.mergedSearchTasks = leftTasks
 		}
 
 		select {
@@ -92,7 +92,11 @@ func (s *Scheduler) Schedule(ctx context.Context) {
 			} else {
 				s.process(t)
 			}
+
+			metrics.QueryNodeReadTaskUnsolveLen.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Dec()
 		}
+
+		metrics.QueryNodeReadTaskReadyLen.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Set(float64(s.mergedSearchTasks.Len()))
 	}
 }
 
@@ -108,9 +112,13 @@ func (s *Scheduler) tryPromote(t Task) bool {
 
 func (s *Scheduler) process(t Task) {
 	s.pool.Submit(func() (interface{}, error) {
+		metrics.QueryNodeReadTaskConcurrency.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Inc()
+
 		err := t.Execute()
 		t.Done(err)
 		s.searchProcessNum.Dec()
+
+		metrics.QueryNodeReadTaskConcurrency.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Dec()
 		return nil, err
 	})
 }
@@ -119,14 +127,14 @@ func (s *Scheduler) mergeTasks(t Task) {
 	switch t := t.(type) {
 	case *SearchTask:
 		merged := false
-		for _, task := range s.mergedSearchTasks {
+		for task := range s.mergedSearchTasks {
 			if task.Merge(t) {
 				merged = true
 				break
 			}
 		}
 		if !merged {
-			s.mergedSearchTasks = append(s.mergedSearchTasks, t)
+			s.mergedSearchTasks.Insert(t)
 		}
 	}
 }
