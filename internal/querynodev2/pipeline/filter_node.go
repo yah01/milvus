@@ -60,11 +60,11 @@ func (fNode *filterNode) Operate(in Msg) Msg {
 	}
 
 	metrics.QueryNodeConsumerMsgCount.
-		WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), fmt.Sprint(fNode.collectionID)).
+		WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.InsertLabel, fmt.Sprint(fNode.collectionID)).
 		Inc()
 
 	metrics.QueryNodeConsumeTimeTickLag.
-		WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), fmt.Sprint(fNode.collectionID)).
+		WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.InsertLabel, fmt.Sprint(fNode.collectionID)).
 		Set(float64(streamMsgPack.EndTs))
 
 	//Get collection from collection manager
