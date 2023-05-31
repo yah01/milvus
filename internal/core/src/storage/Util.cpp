@@ -424,15 +424,21 @@ GetObjectData(RemoteChunkManager* remote_chunk_manager, const std::vector<std::s
     auto& pool = ThreadPool::GetInstance();
     std::vector<std::future<std::unique_ptr<DataCodec>>> futures;
     for (auto& file : remote_files) {
+        std::cout << "yah01: submit get object data task: " << file << std::endl;
         futures.emplace_back(pool.Submit(DownloadAndDecodeRemoteFile, remote_chunk_manager, file));
     }
 
     std::vector<FieldDataPtr> datas;
     for (int i = 0; i < futures.size(); ++i) {
+        std::cout << "yah01: wait for get object data task: " << remote_files[i] << std::endl;
         auto res = futures[i].get();
+        std::cout << "yah01: emplace object field data: " << remote_files[i] << std::endl;
         datas.emplace_back(res->GetFieldData());
     }
+
+    std::cout << "yah01: release arrow unused" << std::endl;
     ReleaseArrowUnused();
+    std::cout << "yah01: release arrow unused done" << std::endl;
     return datas;
 }
 

@@ -10,6 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
 #include <algorithm>
+#include <iostream>
 #include <numeric>
 #include <queue>
 #include <thread>
@@ -106,6 +107,7 @@ SegmentGrowingImpl::Insert(int64_t reserved_offset,
 void
 SegmentGrowingImpl::LoadFieldData(const LoadFieldDataInfo& infos) {
     // schema don't include system field
+    AssertInfo(schema_ != nullptr, "yah01: schema is null while loading field");
     AssertInfo(infos.field_infos.size() == schema_->size() + 2, "lost some field data when load for growing segment");
     AssertInfo(infos.field_infos.find(TimestampFieldID.get()) != infos.field_infos.end(),
                "timestamps field data should be included");
@@ -121,9 +123,12 @@ SegmentGrowingImpl::LoadFieldData(const LoadFieldDataInfo& infos) {
         num_rows = field.second.row_count;
         break;
     }
+    std::cout << "yah01: preinsert... num_rows: " << num_rows << std::endl;
     auto reserved_offset = PreInsert(num_rows);
+    std::cout << "yah01: reserved_offset: " << reserved_offset << std::endl;
     for (auto& [id, info] : infos.field_infos) {
         auto insert_files = info.insert_files;
+        std::cout << "yah01: load field data from remote, field_id: " << id << std::endl;
         auto field_datas = LoadFieldDatasFromRemote(insert_files);
         AssertInfo(num_rows == storage::GetTotalNumRowsForFieldDatas(field_datas),
                    "inconsistent num row between multi fields");
@@ -133,27 +138,36 @@ SegmentGrowingImpl::LoadFieldData(const LoadFieldDataInfo& infos) {
             // query node already guarantees that the timestamp is ordered, avoid field data copy in c++
 
             // step 3: fill into Segment.ConcurrentVector
+            std::cout << "yah01: set timestamp data" << std::endl;
             insert_record_.timestamps_.set_data_raw(reserved_offset, field_datas);
             continue;
         }
 
         if (id == RowFieldID.get()) {
+            std::cout << "yah01: set row id data" << std::endl;
             insert_record_.row_ids_.set_data_raw(reserved_offset, field_datas);
             continue;
         }
 
+        std::cout << "yah01: set field data" << std::endl;
         insert_record_.get_field_data_base(FieldId(id))->set_data_raw(reserved_offset, field_datas);
         if (id == primary_field_id.get()) {
+            std::cout << "yah01: set pks" << std::endl;
             insert_record_.insert_pks(field_datas);
         }
     }
 
     // step 5: update small indexes
+    std::cout << "yah01: update small indexes" << std::endl;
     insert_record_.ack_responder_.AddSegment(reserved_offset, reserved_offset + num_rows);
     if (enable_small_index_) {
+        std::cout << "yah01: get chunk rows" << std::endl;
         int64_t chunk_rows = segcore_config_.get_chunk_rows();
+        std::cout << "yah01: update index ack" << std::endl;
         indexing_record_.UpdateResourceAck(insert_record_.ack_responder_.GetAck() / chunk_rows, insert_record_);
     }
+
+    std::cout << "yah01: load field data done" << std::endl;
 }
 
 Status

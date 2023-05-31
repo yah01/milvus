@@ -149,6 +149,7 @@ class IndexingRecord {
             return;
         }
 
+        std::cout << "yah01: update ack " << chunk_ack << std::endl;
         std::unique_lock lck(mutex_);
         int64_t old_ack = resource_ack_;
         if (old_ack >= chunk_ack) {
@@ -158,6 +159,7 @@ class IndexingRecord {
         lck.unlock();
 
         //    std::thread([this, old_ack, chunk_ack, &record] {
+        std::cout << "yah01: build index " << old_ack << " " << chunk_ack << std::endl;
         for (auto& [field_offset, entry] : field_indexings_) {
             auto vec_base = record.get_field_data_base(field_offset);
             entry->BuildIndexRange(old_ack, chunk_ack, vec_base);

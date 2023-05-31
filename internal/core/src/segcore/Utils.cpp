@@ -528,8 +528,10 @@ LoadFieldDatasFromRemote(std::vector<std::string>& remote_files) {
     std::vector<storage::FieldDataPtr> field_datas;
 
     auto FetchRawData = [&]() {
+        std::cout << "yah01: GetObjectData batch size: " << batch_files.size() << std::endl;
         auto raw_datas = GetObjectData(rcm.get(), batch_files);
         for (auto& data : raw_datas) {
+            std::cout << "yah01: push field data: " << std::endl;
             field_datas.emplace_back(data);
         }
     };

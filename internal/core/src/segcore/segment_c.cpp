@@ -12,6 +12,7 @@
 #include "common/CGoHelper.h"
 #include "common/Types.h"
 #include "common/type_c.h"
+#include "exceptions/EasyAssert.h"
 #include "log/Log.h"
 
 #include "segcore/Collection.h"
@@ -204,6 +205,7 @@ LoadFieldData(CSegmentInterface c_segment, CLoadFieldDataInfo c_load_field_data_
         auto segment = reinterpret_cast<milvus::segcore::SegmentInterface*>(c_segment);
         AssertInfo(segment != nullptr, "segment conversion failed");
         auto load_info = (milvus::segcore::LoadFieldDataInfo*)c_load_field_data_info;
+        AssertInfo(load_info != nullptr, "yah01: load field data info is nullptr");
         segment->LoadFieldData(*load_info);
         return milvus::SuccessCStatus();
     } catch (std::exception& e) {

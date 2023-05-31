@@ -864,6 +864,8 @@ func (s *Segment) LoadMultiFieldData(rowCount int64, fields []*datapb.FieldBinlo
 		}
 	}
 
+	log.Info("yah01: load growing segment fields...", zap.Int64("rowCount", rowCount))
+
 	status := C.LoadFieldData(s.segmentPtr, loadFieldDataInfo.cLoadFieldDataInfo)
 	if err := HandleCStatus(&status, "LoadFieldData failed"); err != nil {
 		return err
