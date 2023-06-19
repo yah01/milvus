@@ -33,7 +33,7 @@ type baseEventHeader struct {
 	NextPosition int32
 }
 
-func (header *baseEventHeader) GetMemoryUsageInBytes() int32 {
+func (header *baseEventHeader) Size() int32 {
 	return int32(binary.Size(header))
 }
 

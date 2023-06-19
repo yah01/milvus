@@ -40,10 +40,13 @@ PayloadReader::init(std::shared_ptr<PayloadInputStream> input) {
     // TODO :: Stream read file data, avoid copying
     std::unique_ptr<parquet::arrow::FileReader> reader;
     auto st = parquet::arrow::OpenFile(input, mem_pool, &reader);
-    AssertInfo(st.ok(), "failed to get arrow file reader");
+    AssertInfo(
+        st.ok(),
+        fmt::format("failed to open arrow file reader: {}", st.ToString()));
     std::shared_ptr<arrow::Table> table;
     st = reader->ReadTable(&table);
-    AssertInfo(st.ok(), "failed to get reader data to arrow table");
+    AssertInfo(st.ok(),
+               fmt::format("failed to read arrow table: {}", st.ToString()));
     auto column = table->column(0);
     AssertInfo(column != nullptr, "returned arrow column is null");
     AssertInfo(column->chunks().size() == 1,

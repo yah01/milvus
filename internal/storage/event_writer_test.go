@@ -58,11 +58,11 @@ func TestSizeofStruct(t *testing.T) {
 }
 
 func TestEventWriter(t *testing.T) {
-	insertEvent, err := newInsertEventWriter(schemapb.DataType_Int32)
+	insertEvent, err := newInsertEventWriter(schemapb.DataType_Int32, new(bytes.Buffer))
 	assert.NoError(t, err)
 	insertEvent.Close()
 
-	insertEvent, err = newInsertEventWriter(schemapb.DataType_Int32)
+	insertEvent, err = newInsertEventWriter(schemapb.DataType_Int32, new(bytes.Buffer))
 	assert.NoError(t, err)
 	defer insertEvent.Close()
 
@@ -70,7 +70,7 @@ func TestEventWriter(t *testing.T) {
 	assert.Error(t, err)
 	err = insertEvent.AddInt32ToPayload([]int32{1, 2, 3})
 	assert.NoError(t, err)
-	nums, err := insertEvent.GetPayloadLengthFromWriter()
+	nums, err := insertEvent.NumRows()
 	assert.NoError(t, err)
 	assert.EqualValues(t, 3, nums)
 	err = insertEvent.Finish()
@@ -80,13 +80,12 @@ func TestEventWriter(t *testing.T) {
 	assert.EqualValues(t, length, insertEvent.EventLength)
 	err = insertEvent.AddInt32ToPayload([]int32{1})
 	assert.Error(t, err)
-	buffer := new(bytes.Buffer)
 	insertEvent.SetEventTimestamp(100, 200)
-	err = insertEvent.Write(buffer)
+	err = insertEvent.Write()
 	assert.NoError(t, err)
 	length, err = insertEvent.GetMemoryUsageInBytes()
 	assert.NoError(t, err)
-	assert.EqualValues(t, length, buffer.Len())
+	assert.EqualValues(t, length, insertEvent.buffer.Len())
 	insertEvent.Close()
 }
 

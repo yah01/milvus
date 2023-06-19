@@ -43,7 +43,7 @@ type NativePayloadWriter struct {
 	builder     array.Builder
 	finished    bool
 	flushedRows int
-	output      *bytes.Buffer
+	result      []byte
 	releaseOnce sync.Once
 }
 
@@ -66,7 +66,6 @@ func NewPayloadWriter(colType schemapb.DataType, dim ...int) (PayloadWriterInter
 		builder:     builder,
 		finished:    false,
 		flushedRows: 0,
-		output:      new(bytes.Buffer),
 	}, nil
 }
 
@@ -412,7 +411,7 @@ func (w *NativePayloadWriter) AddFloatVectorToPayload(data []float32, dim int) e
 	return nil
 }
 
-func (w *NativePayloadWriter) FinishPayloadWriter() error {
+func (w *NativePayloadWriter) FinishPayloadWriter(output *bytes.Buffer) error {
 	if w.finished {
 		return errors.New("can't reuse a finished writer")
 	}
@@ -440,16 +439,24 @@ func (w *NativePayloadWriter) FinishPayloadWriter() error {
 		parquet.WithCompression(compress.Codecs.Zstd),
 		parquet.WithCompressionLevel(3),
 	)
-	return pqarrow.WriteTable(table,
-		w.output,
+
+	start := output.Len()
+	err := pqarrow.WriteTable(table,
+		output,
 		1024*1024*1024,
 		props,
 		pqarrow.DefaultWriterProps(),
 	)
+	if err != nil {
+		return err
+	}
+
+	w.result = output.Bytes()[start:]
+	return nil
 }
 
-func (w *NativePayloadWriter) GetPayloadBufferFromWriter() ([]byte, error) {
-	data := w.output.Bytes()
+func (w *NativePayloadWriter) Buffer() ([]byte, error) {
+	data := w.result
 
 	// The cpp version of payload writer handles the empty buffer as error
 	if len(data) == 0 {
@@ -459,7 +466,7 @@ func (w *NativePayloadWriter) GetPayloadBufferFromWriter() ([]byte, error) {
 	return data, nil
 }
 
-func (w *NativePayloadWriter) GetPayloadLengthFromWriter() (int, error) {
+func (w *NativePayloadWriter) NumRows() (int, error) {
 	return w.flushedRows + w.builder.Len(), nil
 }
 

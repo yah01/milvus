@@ -17,6 +17,8 @@
 package storage
 
 import (
+	"bytes"
+
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 )
 
@@ -36,9 +38,9 @@ type PayloadWriterInterface interface {
 	AddOneJSONToPayload(msg []byte) error
 	AddBinaryVectorToPayload(binVec []byte, dim int) error
 	AddFloatVectorToPayload(binVec []float32, dim int) error
-	FinishPayloadWriter() error
-	GetPayloadBufferFromWriter() ([]byte, error)
-	GetPayloadLengthFromWriter() (int, error)
+	FinishPayloadWriter(output *bytes.Buffer) error
+	Buffer() ([]byte, error)
+	NumRows() (int, error)
 	ReleasePayloadWriter()
 	Close()
 }

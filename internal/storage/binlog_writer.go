@@ -53,10 +53,11 @@ type baseBinlogWriter struct {
 	eventWriters []EventWriter
 	buffer       *bytes.Buffer
 	length       int32
+	closed       bool
 }
 
 func (writer *baseBinlogWriter) isClosed() bool {
-	return writer.buffer != nil
+	return writer.closed
 }
 
 // GetEventNums returns the number of event writers
@@ -72,7 +73,7 @@ func (writer *baseBinlogWriter) GetRowNums() (int32, error) {
 
 	length := 0
 	for _, e := range writer.eventWriters {
-		rows, err := e.GetPayloadLengthFromWriter()
+		rows, err := e.NumRows()
 		if err != nil {
 			return 0, err
 		}
@@ -88,7 +89,7 @@ func (writer *baseBinlogWriter) GetBinlogType() BinlogType {
 
 // GetBuffer gets binlog buffer. Return nil if binlog is not finished yet.
 func (writer *baseBinlogWriter) GetBuffer() ([]byte, error) {
-	if writer.buffer == nil {
+	if !writer.closed {
 		return nil, fmt.Errorf("please close binlog before get buffer")
 	}
 	return writer.buffer.Bytes(), nil
@@ -96,12 +97,15 @@ func (writer *baseBinlogWriter) GetBuffer() ([]byte, error) {
 
 // Finish allocates buffer and releases resource
 func (writer *baseBinlogWriter) Finish() error {
-	if writer.buffer != nil {
+	if writer.closed {
 		return nil
 	}
+
 	if writer.StartTimestamp == 0 || writer.EndTimestamp == 0 {
 		return fmt.Errorf("invalid start/end timestamp")
 	}
+
+	writer.closed = true
 
 	var offset int32
 	writer.buffer = new(bytes.Buffer)
@@ -120,7 +124,7 @@ func (writer *baseBinlogWriter) Finish() error {
 		if err := w.Finish(); err != nil {
 			return err
 		}
-		if err := w.Write(writer.buffer); err != nil {
+		if err := w.Write(); err != nil {
 			return err
 		}
 		length, err := w.GetMemoryUsageInBytes()
@@ -128,7 +132,7 @@ func (writer *baseBinlogWriter) Finish() error {
 			return err
 		}
 		offset += length
-		rows, err := w.GetPayloadLengthFromWriter()
+		rows, err := w.NumRows()
 		if err != nil {
 			return err
 		}
@@ -160,9 +164,9 @@ func (writer *InsertBinlogWriter) NextInsertEventWriter(dim ...int) (*insertEven
 		if len(dim) != 1 {
 			return nil, fmt.Errorf("incorrect input numbers")
 		}
-		event, err = newInsertEventWriter(writer.PayloadDataType, dim[0])
+		event, err = newInsertEventWriter(writer.PayloadDataType, writer.buffer, dim[0])
 	} else {
-		event, err = newInsertEventWriter(writer.PayloadDataType)
+		event, err = newInsertEventWriter(writer.PayloadDataType, writer.buffer)
 	}
 	if err != nil {
 		return nil, err
@@ -182,7 +186,7 @@ func (writer *DeleteBinlogWriter) NextDeleteEventWriter() (*deleteEventWriter, e
 	if writer.isClosed() {
 		return nil, fmt.Errorf("binlog has closed")
 	}
-	event, err := newDeleteEventWriter(writer.PayloadDataType)
+	event, err := newDeleteEventWriter(writer.PayloadDataType, writer.buffer)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +205,7 @@ func (writer *DDLBinlogWriter) NextCreateCollectionEventWriter() (*createCollect
 	if writer.isClosed() {
 		return nil, fmt.Errorf("binlog has closed")
 	}
-	event, err := newCreateCollectionEventWriter(writer.PayloadDataType)
+	event, err := newCreateCollectionEventWriter(writer.PayloadDataType, writer.buffer)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +219,7 @@ func (writer *DDLBinlogWriter) NextDropCollectionEventWriter() (*dropCollectionE
 	if writer.isClosed() {
 		return nil, fmt.Errorf("binlog has closed")
 	}
-	event, err := newDropCollectionEventWriter(writer.PayloadDataType)
+	event, err := newDropCollectionEventWriter(writer.PayloadDataType, writer.buffer)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +233,7 @@ func (writer *DDLBinlogWriter) NextCreatePartitionEventWriter() (*createPartitio
 	if writer.isClosed() {
 		return nil, fmt.Errorf("binlog has closed")
 	}
-	event, err := newCreatePartitionEventWriter(writer.PayloadDataType)
+	event, err := newCreatePartitionEventWriter(writer.PayloadDataType, writer.buffer)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +247,7 @@ func (writer *DDLBinlogWriter) NextDropPartitionEventWriter() (*dropPartitionEve
 	if writer.isClosed() {
 		return nil, fmt.Errorf("binlog has closed")
 	}
-	event, err := newDropPartitionEventWriter(writer.PayloadDataType)
+	event, err := newDropPartitionEventWriter(writer.PayloadDataType, writer.buffer)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +265,7 @@ func (writer *IndexFileBinlogWriter) NextIndexFileEventWriter() (*indexFileEvent
 	if writer.isClosed() {
 		return nil, fmt.Errorf("binlog has closed")
 	}
-	event, err := newIndexFileEventWriter(writer.PayloadDataType)
+	event, err := newIndexFileEventWriter(writer.PayloadDataType, writer.buffer)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +288,7 @@ func NewInsertBinlogWriter(dataType schemapb.DataType, collectionID, partitionID
 			magicNumber:     MagicNumber,
 			binlogType:      InsertBinlog,
 			eventWriters:    make([]EventWriter, 0),
-			buffer:          nil,
+			buffer:          new(bytes.Buffer),
 		},
 	}
 
@@ -304,7 +308,7 @@ func NewDeleteBinlogWriter(dataType schemapb.DataType, collectionID, partitionID
 			magicNumber:     MagicNumber,
 			binlogType:      DeleteBinlog,
 			eventWriters:    make([]EventWriter, 0),
-			buffer:          nil,
+			buffer:          new(bytes.Buffer),
 		},
 	}
 	return w
@@ -321,7 +325,7 @@ func NewDDLBinlogWriter(dataType schemapb.DataType, collectionID int64) *DDLBinl
 			magicNumber:     MagicNumber,
 			binlogType:      DDLBinlog,
 			eventWriters:    make([]EventWriter, 0),
-			buffer:          nil,
+			buffer:          new(bytes.Buffer),
 		},
 	}
 	return w

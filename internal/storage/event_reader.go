@@ -21,6 +21,8 @@ import (
 	"fmt"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
+	"github.com/milvus-io/milvus/pkg/log"
+	"go.uber.org/zap"
 )
 
 // EventReader is used to parse the events contained in the Binlog file.
@@ -101,7 +103,13 @@ func newEventReader(datatype schemapb.DataType, buffer *bytes.Buffer) (*EventRea
 		return nil, err
 	}
 
-	next := int(reader.EventLength - reader.eventHeader.GetMemoryUsageInBytes() - reader.GetEventDataFixPartSize())
+	next := int(reader.EventLength - reader.eventHeader.Size() - reader.GetEventDataFixPartSize())
+	log.Info("yah01: new event reader",
+		zap.Int32("eventLength", int32(reader.EventLength)),
+		zap.Int32("eventHeaderSize", int32(reader.eventHeader.Size())),
+		zap.Int32("GetEventDataFixPartSize", int32(reader.GetEventDataFixPartSize())),
+		zap.Int32("next", int32(next)),
+	)
 	payloadBuffer := buffer.Next(next)
 	payloadReader, err := NewPayloadReader(datatype, payloadBuffer)
 	if err != nil {

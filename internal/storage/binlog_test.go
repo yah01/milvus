@@ -1469,7 +1469,7 @@ func (e *testEvent) Finish() error {
 func (e *testEvent) Close() {
 }
 
-func (e *testEvent) Write(buffer *bytes.Buffer) error {
+func (e *testEvent) Write() error {
 	if e.writeError {
 		return fmt.Errorf("write error")
 	}
@@ -1482,7 +1482,7 @@ func (e *testEvent) GetMemoryUsageInBytes() (int32, error) {
 	}
 	return 0, nil
 }
-func (e *testEvent) GetPayloadLengthFromWriter() (int, error) {
+func (e *testEvent) NumRows() (int, error) {
 	if e.getPayloadLengthError {
 		return -1, fmt.Errorf("getPayloadLength error")
 	}

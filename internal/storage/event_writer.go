@@ -23,9 +23,10 @@ import (
 	"io"
 
 	"github.com/cockroachdb/errors"
+	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
-	"github.com/milvus-io/milvus/pkg/common"
+	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 )
 
@@ -70,7 +71,7 @@ type descriptorEvent struct {
 
 // GetMemoryUsageInBytes returns descriptor Event memory usage in bytes
 func (event *descriptorEvent) GetMemoryUsageInBytes() int32 {
-	return event.descriptorEventHeader.GetMemoryUsageInBytes() + event.descriptorEventData.GetMemoryUsageInBytes()
+	return event.descriptorEventHeader.Size() + event.descriptorEventData.GetMemoryUsageInBytes()
 }
 
 // Write writes descriptor event into buffer
@@ -79,7 +80,7 @@ func (event *descriptorEvent) Write(buffer io.Writer) error {
 	if err != nil {
 		return err
 	}
-	event.descriptorEventHeader.EventLength = event.descriptorEventHeader.GetMemoryUsageInBytes() + event.descriptorEventData.GetMemoryUsageInBytes()
+	event.descriptorEventHeader.EventLength = event.descriptorEventHeader.Size() + event.descriptorEventData.GetMemoryUsageInBytes()
 	event.descriptorEventHeader.NextPosition = int32(binary.Size(MagicNumber)) + event.descriptorEventHeader.EventLength
 
 	if err := event.descriptorEventHeader.Write(buffer); err != nil {
@@ -99,7 +100,7 @@ type EventWriter interface {
 	// Close release resources
 	Close()
 	// Write serialize to buffer, should call Finish first
-	Write(buffer *bytes.Buffer) error
+	Write() error
 	GetMemoryUsageInBytes() (int32, error)
 	SetOffset(offset int32)
 }
@@ -107,6 +108,7 @@ type EventWriter interface {
 type baseEventWriter struct {
 	eventHeader
 	PayloadWriterInterface
+	buffer           *bytes.Buffer
 	isClosed         bool
 	isFinish         bool
 	offset           int32
@@ -115,35 +117,30 @@ type baseEventWriter struct {
 }
 
 func (writer *baseEventWriter) GetMemoryUsageInBytes() (int32, error) {
-	data, err := writer.GetPayloadBufferFromWriter()
+	data, err := writer.Buffer()
 	if err != nil {
 		return -1, err
 	}
-	size := writer.getEventDataSize() + writer.eventHeader.GetMemoryUsageInBytes() + int32(len(data))
+	size := writer.getEventDataSize() + writer.eventHeader.Size() + int32(len(data))
 	return size, nil
 }
 
-func (writer *baseEventWriter) Write(buffer *bytes.Buffer) error {
-	if err := writer.eventHeader.Write(buffer); err != nil {
-		return err
-	}
-	if err := writer.writeEventData(buffer); err != nil {
-		return err
-	}
-	data, err := writer.GetPayloadBufferFromWriter()
-	if err != nil {
-		return err
-	}
-	if err := binary.Write(buffer, common.Endian, data); err != nil {
-		return err
-	}
+func (writer *baseEventWriter) Write() error {
 	return nil
 }
 
 func (writer *baseEventWriter) Finish() error {
 	if !writer.isFinish {
 		writer.isFinish = true
-		if err := writer.FinishPayloadWriter(); err != nil {
+
+		if err := writer.eventHeader.Write(writer.buffer); err != nil {
+			return err
+		}
+		if err := writer.writeEventData(writer.buffer); err != nil {
+			return err
+		}
+
+		if err := writer.FinishPayloadWriter(writer.buffer); err != nil {
 			return err
 		}
 		eventLength, err := writer.GetMemoryUsageInBytes()
@@ -152,6 +149,11 @@ func (writer *baseEventWriter) Finish() error {
 		}
 		writer.EventLength = eventLength
 		writer.NextPosition = eventLength + writer.offset
+		log.Info("yah01: finish event",
+			zap.Int32("length", eventLength),
+			zap.Int32("nextPosition", writer.NextPosition),
+			zap.Int("bufSize", len(writer.buffer.Bytes())),
+		)
 	}
 	return nil
 }
@@ -212,7 +214,7 @@ func newDescriptorEvent() *descriptorEvent {
 	}
 }
 
-func newInsertEventWriter(dataType schemapb.DataType, dim ...int) (*insertEventWriter, error) {
+func newInsertEventWriter(dataType schemapb.DataType, buffer *bytes.Buffer, dim ...int) (*insertEventWriter, error) {
 	var payloadWriter PayloadWriterInterface
 	var err error
 	if typeutil.IsVectorType(dataType) {
@@ -233,6 +235,7 @@ func newInsertEventWriter(dataType schemapb.DataType, dim ...int) (*insertEventW
 		baseEventWriter: baseEventWriter{
 			eventHeader:            *header,
 			PayloadWriterInterface: payloadWriter,
+			buffer:                 buffer,
 			isClosed:               false,
 			isFinish:               false,
 		},
@@ -243,7 +246,7 @@ func newInsertEventWriter(dataType schemapb.DataType, dim ...int) (*insertEventW
 	return writer, nil
 }
 
-func newDeleteEventWriter(dataType schemapb.DataType) (*deleteEventWriter, error) {
+func newDeleteEventWriter(dataType schemapb.DataType, buffer *bytes.Buffer) (*deleteEventWriter, error) {
 	payloadWriter, err := NewPayloadWriter(dataType)
 	if err != nil {
 		return nil, err
@@ -255,6 +258,7 @@ func newDeleteEventWriter(dataType schemapb.DataType) (*deleteEventWriter, error
 		baseEventWriter: baseEventWriter{
 			eventHeader:            *header,
 			PayloadWriterInterface: payloadWriter,
+			buffer:                 buffer,
 			isClosed:               false,
 			isFinish:               false,
 		},
@@ -265,7 +269,7 @@ func newDeleteEventWriter(dataType schemapb.DataType) (*deleteEventWriter, error
 	return writer, nil
 }
 
-func newCreateCollectionEventWriter(dataType schemapb.DataType) (*createCollectionEventWriter, error) {
+func newCreateCollectionEventWriter(dataType schemapb.DataType, buffer *bytes.Buffer) (*createCollectionEventWriter, error) {
 	if dataType != schemapb.DataType_String && dataType != schemapb.DataType_Int64 {
 		return nil, errors.New("incorrect data type")
 	}
@@ -281,6 +285,7 @@ func newCreateCollectionEventWriter(dataType schemapb.DataType) (*createCollecti
 		baseEventWriter: baseEventWriter{
 			eventHeader:            *header,
 			PayloadWriterInterface: payloadWriter,
+			buffer:                 buffer,
 			isClosed:               false,
 			isFinish:               false,
 		},
@@ -291,7 +296,7 @@ func newCreateCollectionEventWriter(dataType schemapb.DataType) (*createCollecti
 	return writer, nil
 }
 
-func newDropCollectionEventWriter(dataType schemapb.DataType) (*dropCollectionEventWriter, error) {
+func newDropCollectionEventWriter(dataType schemapb.DataType, buffer *bytes.Buffer) (*dropCollectionEventWriter, error) {
 	if dataType != schemapb.DataType_String && dataType != schemapb.DataType_Int64 {
 		return nil, errors.New("incorrect data type")
 	}
@@ -307,6 +312,7 @@ func newDropCollectionEventWriter(dataType schemapb.DataType) (*dropCollectionEv
 		baseEventWriter: baseEventWriter{
 			eventHeader:            *header,
 			PayloadWriterInterface: payloadWriter,
+			buffer:                 buffer,
 			isClosed:               false,
 			isFinish:               false,
 		},
@@ -317,7 +323,7 @@ func newDropCollectionEventWriter(dataType schemapb.DataType) (*dropCollectionEv
 	return writer, nil
 }
 
-func newCreatePartitionEventWriter(dataType schemapb.DataType) (*createPartitionEventWriter, error) {
+func newCreatePartitionEventWriter(dataType schemapb.DataType, buffer *bytes.Buffer) (*createPartitionEventWriter, error) {
 	if dataType != schemapb.DataType_String && dataType != schemapb.DataType_Int64 {
 		return nil, errors.New("incorrect data type")
 	}
@@ -333,6 +339,7 @@ func newCreatePartitionEventWriter(dataType schemapb.DataType) (*createPartition
 		baseEventWriter: baseEventWriter{
 			eventHeader:            *header,
 			PayloadWriterInterface: payloadWriter,
+			buffer:                 buffer,
 			isClosed:               false,
 			isFinish:               false,
 		},
@@ -343,7 +350,7 @@ func newCreatePartitionEventWriter(dataType schemapb.DataType) (*createPartition
 	return writer, nil
 }
 
-func newDropPartitionEventWriter(dataType schemapb.DataType) (*dropPartitionEventWriter, error) {
+func newDropPartitionEventWriter(dataType schemapb.DataType, buffer *bytes.Buffer) (*dropPartitionEventWriter, error) {
 	if dataType != schemapb.DataType_String && dataType != schemapb.DataType_Int64 {
 		return nil, errors.New("incorrect data type")
 	}
@@ -359,6 +366,7 @@ func newDropPartitionEventWriter(dataType schemapb.DataType) (*dropPartitionEven
 		baseEventWriter: baseEventWriter{
 			eventHeader:            *header,
 			PayloadWriterInterface: payloadWriter,
+			buffer:                 buffer,
 			isClosed:               false,
 			isFinish:               false,
 		},
@@ -369,7 +377,7 @@ func newDropPartitionEventWriter(dataType schemapb.DataType) (*dropPartitionEven
 	return writer, nil
 }
 
-func newIndexFileEventWriter(dataType schemapb.DataType) (*indexFileEventWriter, error) {
+func newIndexFileEventWriter(dataType schemapb.DataType, buffer *bytes.Buffer) (*indexFileEventWriter, error) {
 	payloadWriter, err := NewPayloadWriter(dataType)
 	if err != nil {
 		return nil, err
@@ -381,6 +389,7 @@ func newIndexFileEventWriter(dataType schemapb.DataType) (*indexFileEventWriter,
 		baseEventWriter: baseEventWriter{
 			eventHeader:            *header,
 			PayloadWriterInterface: payloadWriter,
+			buffer:                 buffer,
 			isClosed:               false,
 			isFinish:               false,
 		},
