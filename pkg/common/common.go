@@ -96,26 +96,26 @@ const (
 	MaxLengthKey   = "max_length"
 )
 
-//  Collection properties key
-
+// Collection properties key
 const (
 	CollectionTTLConfigKey      = "collection.ttl.seconds"
 	CollectionAutoCompactionKey = "collection.autocompaction.enabled"
 
 	// rate limit
-	CollectionInsertRateMaxKey   = "collection.insertRate.max.mb"
-	CollectionInsertRateMinKey   = "collection.insertRate.min.mb"
-	CollectionUpsertRateMaxKey   = "collection.upsertRate.max.mb"
-	CollectionUpsertRateMinKey   = "collection.upsertRate.min.mb"
-	CollectionDeleteRateMaxKey   = "collection.deleteRate.max.mb"
-	CollectionDeleteRateMinKey   = "collection.deleteRate.min.mb"
-	CollectionBulkLoadRateMaxKey = "collection.bulkLoadRate.max.mb"
-	CollectionBulkLoadRateMinKey = "collection.bulkLoadRate.min.mb"
-	CollectionQueryRateMaxKey    = "collection.queryRate.max.qps"
-	CollectionQueryRateMinKey    = "collection.queryRate.min.qps"
-	CollectionSearchRateMaxKey   = "collection.searchRate.max.vps"
-	CollectionSearchRateMinKey   = "collection.searchRate.min.vps"
-	CollectionDiskQuotaKey       = "collection.diskProtection.diskQuota.mb"
+	CollectionInsertRateMaxKey       = "collection.insertRate.max.mb"
+	CollectionInsertRateMinKey       = "collection.insertRate.min.mb"
+	CollectionUpsertRateMaxKey       = "collection.upsertRate.max.mb"
+	CollectionUpsertRateMinKey       = "collection.upsertRate.min.mb"
+	CollectionDeleteRateMaxKey       = "collection.deleteRate.max.mb"
+	CollectionDeleteRateMinKey       = "collection.deleteRate.min.mb"
+	CollectionBulkLoadRateMaxKey     = "collection.bulkLoadRate.max.mb"
+	CollectionBulkLoadRateMinKey     = "collection.bulkLoadRate.min.mb"
+	CollectionQueryRateMaxKey        = "collection.queryRate.max.qps"
+	CollectionQueryRateMinKey        = "collection.queryRate.min.qps"
+	CollectionSearchRateMaxKey       = "collection.searchRate.max.vps"
+	CollectionSearchRateMinKey       = "collection.searchRate.min.vps"
+	CollectionDiskQuotaKey           = "collection.diskProtection.diskQuota.mb"
+	CollectionMemoryEfficientModeKey = "collection.memoryEfficientMode.bool"
 )
 
 const (
