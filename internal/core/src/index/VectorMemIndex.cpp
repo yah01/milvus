@@ -107,10 +107,12 @@ VectorMemIndex::Load(const Config& config) {
     auto parallel_degree =
         static_cast<uint64_t>(DEFAULT_FIELD_MAX_MEMORY_LIMIT / FILE_SLICE_SIZE);
 
+    std::cout << "load index with files, num: " << index_files.value().size()
+              << std::endl;
     std::map<std::string, storage::FieldDataChannelPtr> channels;
     for (const auto& file : index_files.value()) {
         auto key = file.substr(file.find_last_of('/') + 1);
-        LOG_SEGCORE_INFO_ << "loading index file " << key;
+        std::cout << "loading index file " << key << std::endl;
         if (channels.find(key) == channels.end()) {
             channels.emplace(std::move(key),
                              std::make_shared<storage::FieldDataChannel>(
@@ -119,18 +121,21 @@ VectorMemIndex::Load(const Config& config) {
     }
 
     auto& pool = ThreadPools::GetThreadPool(milvus::ThreadPoolPriority::MIDDLE);
-    auto future = pool.Submit(
-        [&] { file_manager_->LoadFileStream(index_files.value(), channels); });
+    auto future = pool.Submit([&] {
+        std::cout << "got pool for loading index..." << std::endl;
+        file_manager_->LoadFileStream(index_files.value(), channels);
+        std::cout << "loading index async done" << std::endl;
+    });
 
-    LOG_SEGCORE_INFO_ << "assemble index data...";
+    std::cout << "assemble index data..." << std::endl;
     std::unordered_map<std::string, storage::FieldDataPtr> result;
     AssembleIndexDatas(channels, result);
-    LOG_SEGCORE_INFO_ << "assemble index data done";
+    std::cout << "assemble index data done" << std::endl;
 
-    LOG_SEGCORE_INFO_ << "construct binary set...";
+    std::cout << "construct binary set..." << std::endl;
     BinarySet binary_set;
     for (auto& [key, data] : result) {
-        LOG_SEGCORE_INFO_ << "add index data to binary set: " << key;
+        std::cout << "add index data to binary set: " << key << std::endl;
         auto size = data->Size();
         auto deleter = [&](uint8_t*) {};  // avoid repeated deconstruction
         auto buf = std::shared_ptr<uint8_t[]>(
@@ -138,9 +143,9 @@ VectorMemIndex::Load(const Config& config) {
         binary_set.Append(key, buf, size);
     }
 
-    LOG_SEGCORE_INFO_ << "load index into Knowhere...";
+    std::cout << "load index into Knowhere..." << std::endl;
     LoadWithoutAssemble(binary_set, config);
-    LOG_SEGCORE_INFO_ << "load vector index done";
+    std::cout << "load vector index done" << std::endl;
 }
 
 void
