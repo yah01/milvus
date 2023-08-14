@@ -825,7 +825,7 @@ SegmentSealedImpl::bulk_subscript(FieldId field_id,
         switch (field_meta.get_data_type()) {
             case DataType::VARCHAR:
             case DataType::STRING: {
-                FixedVector<std::string> output(count);
+                std::vector<std::string> output(count);
                 bulk_subscript_impl<std::string>(
                     column.get(), seg_offsets, count, output.data());
                 return CreateScalarDataArrayFrom(
@@ -833,7 +833,7 @@ SegmentSealedImpl::bulk_subscript(FieldId field_id,
             }
 
             case DataType::JSON: {
-                FixedVector<std::string> output(count);
+                std::vector<std::string> output(count);
                 bulk_subscript_impl<Json, std::string>(
                     column.get(), seg_offsets, count, output.data());
                 return CreateScalarDataArrayFrom(
@@ -856,37 +856,37 @@ SegmentSealedImpl::bulk_subscript(FieldId field_id,
             return CreateScalarDataArrayFrom(output.data(), count, field_meta);
         }
         case DataType::INT8: {
-            FixedVector<int8_t> output(count);
+            std::vector<int8_t> output(count);
             bulk_subscript_impl<int8_t>(
                 src_vec, seg_offsets, count, output.data());
             return CreateScalarDataArrayFrom(output.data(), count, field_meta);
         }
         case DataType::INT16: {
-            FixedVector<int16_t> output(count);
+            std::vector<int16_t> output(count);
             bulk_subscript_impl<int16_t>(
                 src_vec, seg_offsets, count, output.data());
             return CreateScalarDataArrayFrom(output.data(), count, field_meta);
         }
         case DataType::INT32: {
-            FixedVector<int32_t> output(count);
+            std::vector<int32_t> output(count);
             bulk_subscript_impl<int32_t>(
                 src_vec, seg_offsets, count, output.data());
             return CreateScalarDataArrayFrom(output.data(), count, field_meta);
         }
         case DataType::INT64: {
-            FixedVector<int64_t> output(count);
+            std::vector<int64_t> output(count);
             bulk_subscript_impl<int64_t>(
                 src_vec, seg_offsets, count, output.data());
             return CreateScalarDataArrayFrom(output.data(), count, field_meta);
         }
         case DataType::FLOAT: {
-            FixedVector<float> output(count);
+            std::vector<float> output(count);
             bulk_subscript_impl<float>(
                 src_vec, seg_offsets, count, output.data());
             return CreateScalarDataArrayFrom(output.data(), count, field_meta);
         }
         case DataType::DOUBLE: {
-            FixedVector<double> output(count);
+            std::vector<double> output(count);
             bulk_subscript_impl<double>(
                 src_vec, seg_offsets, count, output.data());
             return CreateScalarDataArrayFrom(output.data(), count, field_meta);
