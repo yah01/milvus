@@ -302,77 +302,78 @@ func (loader *segmentLoader) notifyLoadFinish(segments ...*querypb.SegmentLoadIn
 // requestResource requests memory & storage to load segments,
 // returns the memory usage, disk usage and concurrency with the gained memory.
 func (loader *segmentLoader) requestResource(ctx context.Context, infos ...*querypb.SegmentLoadInfo) (LoadResource, int, error) {
-	segmentIDs := lo.Map(infos, func(info *querypb.SegmentLoadInfo, _ int) int64 {
-		return info.GetSegmentID()
-	})
-	log := log.Ctx(ctx).With(
-		zap.Int64s("segmentIDs", segmentIDs),
-	)
-
 	resource := LoadResource{}
+	return resource, 1, nil
 
-	loader.mut.Lock()
-	defer loader.mut.Unlock()
+	// segmentIDs := lo.Map(infos, func(info *querypb.SegmentLoadInfo, _ int) int64 {
+	// 	return info.GetSegmentID()
+	// })
+	// log := log.Ctx(ctx).With(
+	// 	zap.Int64s("segmentIDs", segmentIDs),
+	// )
 
-	memoryUsage := hardware.GetUsedMemoryCount()
-	totalMemory := hardware.GetMemoryCount()
+	// loader.mut.Lock()
+	// defer loader.mut.Unlock()
 
-	diskUsage, err := GetLocalUsedSize(paramtable.Get().LocalStorageCfg.Path.GetValue())
-	if err != nil {
-		return resource, 0, errors.Wrap(err, "get local used size failed")
-	}
-	diskCap := paramtable.Get().QueryNodeCfg.DiskCapacityLimit.GetAsUint64()
+	// memoryUsage := hardware.GetUsedMemoryCount()
+	// totalMemory := hardware.GetMemoryCount()
 
-	poolCap := runtime.NumCPU() * paramtable.Get().CommonCfg.HighPriorityThreadCoreCoefficient.GetAsInt()
-	if loader.committedResource.WorkNum >= poolCap {
-		return resource, 0, merr.WrapErrServiceRequestLimitExceeded(int32(poolCap))
-	} else if loader.committedResource.MemorySize+memoryUsage >= totalMemory {
-		return resource, 0, merr.WrapErrServiceMemoryLimitExceeded(float32(loader.committedResource.MemorySize+memoryUsage), float32(totalMemory))
-	} else if loader.committedResource.DiskSize+uint64(diskUsage) >= diskCap {
-		return resource, 0, merr.WrapErrServiceDiskLimitExceeded(float32(loader.committedResource.DiskSize+uint64(diskUsage)), float32(diskCap))
-	}
+	// diskUsage, err := GetLocalUsedSize(paramtable.Get().LocalStorageCfg.Path.GetValue())
+	// if err != nil {
+	// 	return resource, 0, errors.Wrap(err, "get local used size failed")
+	// }
+	// diskCap := paramtable.Get().QueryNodeCfg.DiskCapacityLimit.GetAsUint64()
 
-	concurrencyLevel := funcutil.Min(runtime.GOMAXPROCS(0), len(infos))
+	// poolCap := runtime.NumCPU() * paramtable.Get().CommonCfg.HighPriorityThreadCoreCoefficient.GetAsInt()
+	// if loader.committedResource.WorkNum >= poolCap {
+	// 	return resource, 0, merr.WrapErrServiceRequestLimitExceeded(int32(poolCap))
+	// } else if loader.committedResource.MemorySize+memoryUsage >= totalMemory {
+	// 	return resource, 0, merr.WrapErrServiceMemoryLimitExceeded(float32(loader.committedResource.MemorySize+memoryUsage), float32(totalMemory))
+	// } else if loader.committedResource.DiskSize+uint64(diskUsage) >= diskCap {
+	// 	return resource, 0, merr.WrapErrServiceDiskLimitExceeded(float32(loader.committedResource.DiskSize+uint64(diskUsage)), float32(diskCap))
+	// }
 
-	for _, info := range infos {
-		for _, field := range info.GetBinlogPaths() {
-			resource.WorkNum += len(field.GetBinlogs())
-		}
-		for _, index := range info.GetIndexInfos() {
-			resource.WorkNum += len(index.IndexFilePaths)
-		}
-	}
+	// concurrencyLevel := funcutil.Min(runtime.GOMAXPROCS(0), len(infos))
 
-	for ; concurrencyLevel > 1; concurrencyLevel /= 2 {
-		_, _, err := loader.checkSegmentSize(ctx, infos, concurrencyLevel)
-		if err == nil {
-			break
-		}
-	}
+	// for _, info := range infos {
+	// 	for _, field := range info.GetBinlogPaths() {
+	// 		resource.WorkNum += len(field.GetBinlogs())
+	// 	}
+	// 	for _, index := range info.GetIndexInfos() {
+	// 		resource.WorkNum += len(index.IndexFilePaths)
+	// 	}
+	// }
 
-	mu, du, err := loader.checkSegmentSize(ctx, infos, concurrencyLevel)
-	if err != nil {
-		log.Warn("no sufficient resource to load segments", zap.Error(err))
-		return resource, 0, err
-	}
+	// for ; concurrencyLevel > 1; concurrencyLevel /= 2 {
+	// 	_, _, err := loader.checkSegmentSize(ctx, infos, concurrencyLevel)
+	// 	if err == nil {
+	// 		break
+	// 	}
+	// }
 
-	resource.MemorySize += mu
-	resource.DiskSize += du
+	// mu, du, err := loader.checkSegmentSize(ctx, infos, concurrencyLevel)
+	// if err != nil {
+	// 	log.Warn("no sufficient resource to load segments", zap.Error(err))
+	// 	return resource, 0, err
+	// }
 
-	toMB := func(mem uint64) float64 {
-		return float64(mem) / 1024 / 1024
-	}
-	loader.committedResource.Add(resource)
-	log.Info("request resource for loading segments (unit in MiB)",
-		zap.Int("workerNum", resource.WorkNum),
-		zap.Int("committedWorkerNum", loader.committedResource.WorkNum),
-		zap.Float64("memory", toMB(resource.MemorySize)),
-		zap.Float64("committedMemory", toMB(loader.committedResource.MemorySize)),
-		zap.Float64("disk", toMB(resource.DiskSize)),
-		zap.Float64("committedDisk", toMB(loader.committedResource.DiskSize)),
-	)
+	// resource.MemorySize += mu
+	// resource.DiskSize += du
 
-	return resource, concurrencyLevel, nil
+	// toMB := func(mem uint64) float64 {
+	// 	return float64(mem) / 1024 / 1024
+	// }
+	// loader.committedResource.Add(resource)
+	// log.Info("request resource for loading segments (unit in MiB)",
+	// 	zap.Int("workerNum", resource.WorkNum),
+	// 	zap.Int("committedWorkerNum", loader.committedResource.WorkNum),
+	// 	zap.Float64("memory", toMB(resource.MemorySize)),
+	// 	zap.Float64("committedMemory", toMB(loader.committedResource.MemorySize)),
+	// 	zap.Float64("disk", toMB(resource.DiskSize)),
+	// 	zap.Float64("committedDisk", toMB(loader.committedResource.DiskSize)),
+	// )
+
+	// return resource, concurrencyLevel, nil
 }
 
 // freeRequest returns request memory & storage usage request.
