@@ -77,7 +77,7 @@ minio:
   # Custom endpoint for fetch IAM role credentials. when useIAM is true & cloudProvider is "aws".
   # Leave it empty if you want to use AWS default endpoint
   iamEndpoint:
-  # Log level for aws sdk log. 
+  # Log level for aws sdk log.
   # Supported level:  off, fatal, error, warn, info, debug, trace
   logLevel: error
   # Cloud data center region
@@ -571,7 +571,7 @@ quotaAndLimits:
       # When memory usage > memoryHighWaterLevel, all dml requests would be rejected;
       # When memoryLowWaterLevel < memory usage < memoryHighWaterLevel, reduce the dml rate;
       # When memory usage < memoryLowWaterLevel, no action.
-      enabled: true
+      enabled: false
       dataNodeMemoryLowWaterLevel: 0.85 # (0, 1], memoryLowWaterLevel in DataNodes
       dataNodeMemoryHighWaterLevel: 0.95 # (0, 1], memoryHighWaterLevel in DataNodes
       queryNodeMemoryLowWaterLevel: 0.85 # (0, 1], memoryLowWaterLevel in QueryNodes
