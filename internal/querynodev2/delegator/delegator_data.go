@@ -251,7 +251,7 @@ func (sd *shardDelegator) applyDelete(ctx context.Context, nodeID int64, worker 
 			log.Debug("delegator plan to applyDelete via worker")
 			err := retry.Do(ctx, func() error {
 				if sd.Stopped() {
-					return retry.Unrecoverable(merr.WrapErrChannelNotAvailable(sd.vchannelName, "channel is unsubscribing"))
+					return merr.WrapErrChannelNotAvailable(sd.vchannelName, "channel is unsubscribing")
 				}
 
 				err := worker.Delete(ctx, &querypb.DeleteRequest{
@@ -408,6 +408,8 @@ func (sd *shardDelegator) LoadSegments(ctx context.Context, req *querypb.LoadSeg
 		}
 	})
 	log.Debug("load delete...")
+	// sd.deleteMut.Lock()
+	// defer sd.deleteMut.Unlock()
 	err = sd.loadStreamDelete(ctx, candidates, infos, req.GetDeltaPositions(), targetNodeID, worker, entries)
 	if err != nil {
 		log.Warn("load stream delete failed", zap.Error(err))

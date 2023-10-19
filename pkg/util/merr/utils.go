@@ -343,6 +343,11 @@ func WrapErrServiceUnimplemented(grpcErr error) error {
 	return err
 }
 
+func WrapErrServiceDisconnected(grpcErr error) error {
+	err := errors.Wrapf(ErrServiceDisconnected, "err: %s", grpcErr.Error())
+	return err
+}
+
 // database related
 func WrapErrDatabaseNotFound(database any, msg ...string) error {
 	err := wrapWithField(ErrDatabaseNotFound, "database", database)

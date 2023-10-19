@@ -24,8 +24,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/milvus-io/milvus/pkg/util/retry"
 )
 
 type mockChildStep struct{}
@@ -89,7 +87,7 @@ func Test_stepStack_Execute(t *testing.T) {
 
 	t.Run("Unrecoverable", func(t *testing.T) {
 		failStep := newMockFailStep()
-		failStep.err = retry.Unrecoverable(errors.New("error mock Execute"))
+		failStep.err = errors.New("error mock Execute")
 		steps := []nestedStep{
 			failStep,
 		}
@@ -157,7 +155,7 @@ func Test_bgStepExecutor_scheduleLoop(t *testing.T) {
 			s = nil
 		case 1:
 			failStep := newMockFailStep()
-			failStep.err = retry.Unrecoverable(errors.New("error mock Execute"))
+			failStep.err = errors.New("error mock Execute")
 			s = &stepStack{steps: []nestedStep{
 				newMockNormalStep(),
 				failStep,

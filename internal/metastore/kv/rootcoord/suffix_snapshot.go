@@ -34,7 +34,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/common"
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/util/etcd"
-	"github.com/milvus-io/milvus/pkg/util/retry"
+	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/tsoutil"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 )
@@ -99,7 +99,7 @@ var _ kv.SnapShotKV = (*SuffixSnapshot)(nil)
 // NewSuffixSnapshot creates a NewSuffixSnapshot with provided kv
 func NewSuffixSnapshot(metaKV kv.MetaKv, sep, root, snapshot string) (*SuffixSnapshot, error) {
 	if metaKV == nil {
-		return nil, retry.Unrecoverable(errors.New("MetaKv is nil"))
+		return nil, merr.WrapErrServiceInternal("metaKV is nil")
 	}
 
 	// handles trailing / logic

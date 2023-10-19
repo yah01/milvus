@@ -363,7 +363,7 @@ func (c *Core) initMetaTable() error {
 			}
 			catalog = &kvmetestore.Catalog{Txn: metaKV, Snapshot: ss}
 		default:
-			return retry.Unrecoverable(fmt.Errorf("not supported meta store: %s", Params.MetaStoreCfg.MetaStoreType.GetValue()))
+			return fmt.Errorf("not supported meta store: %s", Params.MetaStoreCfg.MetaStoreType.GetValue())
 		}
 
 		if c.meta, err = NewMetaTable(c.ctx, catalog, c.tsoAllocator); err != nil {

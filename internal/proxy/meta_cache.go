@@ -805,16 +805,13 @@ func (m *MetaCache) GetShards(ctx context.Context, withCache bool, database, col
 	err = retry.Do(childCtx, func() error {
 		resp, err = m.queryCoord.GetShardLeaders(ctx, req)
 		if err != nil {
-			return retry.Unrecoverable(err)
+			return err
 		}
 		if resp.GetStatus().GetErrorCode() == commonpb.ErrorCode_Success {
 			return nil
 		}
 		// do not retry unless got NoReplicaAvailable from querycoord
-		if resp.GetStatus().GetErrorCode() != commonpb.ErrorCode_NoReplicaAvailable {
-			return retry.Unrecoverable(fmt.Errorf("fail to get shard leaders from QueryCoord: %s", resp.GetStatus().GetReason()))
-		}
-		return fmt.Errorf("fail to get shard leaders from QueryCoord: %s", resp.GetStatus().GetReason())
+		return merr.Error(resp.GetStatus())
 	})
 	if err != nil {
 		return nil, err

@@ -152,38 +152,6 @@ func (s *ErrSuite) TestOldCode() {
 	s.ErrorIs(OldCodeToMerr(commonpb.ErrorCode_UnexpectedError), errUnexpected)
 }
 
-func (s *ErrSuite) TestCombine() {
-	var (
-		errFirst  = errors.New("first")
-		errSecond = errors.New("second")
-		errThird  = errors.New("third")
-	)
-
-	err := Combine(errFirst, errSecond)
-	s.True(errors.Is(err, errFirst))
-	s.True(errors.Is(err, errSecond))
-	s.False(errors.Is(err, errThird))
-
-	s.Equal("first: second", err.Error())
-}
-
-func (s *ErrSuite) TestCombineWithNil() {
-	err := errors.New("non-nil")
-
-	err = Combine(nil, err)
-	s.NotNil(err)
-}
-
-func (s *ErrSuite) TestCombineOnlyNil() {
-	err := Combine(nil, nil)
-	s.Nil(err)
-}
-
-func (s *ErrSuite) TestCombineCode() {
-	err := Combine(WrapErrIoFailed("test"), WrapErrCollectionNotFound(1))
-	s.Equal(Code(ErrCollectionNotFound), Code(err))
-}
-
 func (s *ErrSuite) TestIsHealthy() {
 	type testCase struct {
 		code   commonpb.StateCode

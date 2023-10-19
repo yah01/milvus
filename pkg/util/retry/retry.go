@@ -38,25 +38,23 @@ func Do(ctx context.Context, fn func() error, opts ...Option) error {
 		opt(c)
 	}
 
-	var el error
-
+	var err error
 	for i := uint(0); i < c.attempts; i++ {
-		if err := fn(); err != nil {
+		if err = fn(); err != nil {
 			if i%4 == 0 {
 				log.Error("retry func failed", zap.Uint("retry time", i), zap.Error(err))
 			}
 
 			err = errors.Wrapf(err, "attempt #%d", i)
-			el = merr.Combine(el, err)
 
-			if !IsRecoverable(err) {
-				return el
+			if !merr.IsRetryableErr(err) {
+				return err
 			}
 
 			select {
 			case <-time.After(c.sleep):
 			case <-ctx.Done():
-				return merr.Combine(el, ctx.Err())
+				return err
 			}
 
 			c.sleep *= 2
@@ -67,19 +65,5 @@ func Do(ctx context.Context, fn func() error, opts ...Option) error {
 			return nil
 		}
 	}
-	return el
-}
-
-// errUnrecoverable is error instance for unrecoverable.
-var errUnrecoverable = errors.New("unrecoverable error")
-
-// Unrecoverable method wrap an error to unrecoverableError. This will make retry
-// quick return.
-func Unrecoverable(err error) error {
-	return merr.Combine(err, errUnrecoverable)
-}
-
-// IsRecoverable is used to judge whether the error is wrapped by unrecoverableError.
-func IsRecoverable(err error) bool {
-	return !errors.Is(err, errUnrecoverable)
+	return err
 }

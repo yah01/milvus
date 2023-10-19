@@ -485,13 +485,7 @@ func (ibNode *insertBufferNode) Sync(fgMsg *flowGraphMsg, seg2Upload []UniqueID,
 				task.flushed,
 				task.dropped,
 				endPosition)
-			if err != nil {
-				if errors.Is(err, merr.ErrSegmentNotFound) {
-					return retry.Unrecoverable(err)
-				}
-				return err
-			}
-			return nil
+			return err
 		}, getFlowGraphRetryOpt())
 		if err != nil {
 			metrics.DataNodeFlushBufferCount.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.FailLabel).Inc()

@@ -367,7 +367,7 @@ func (c *ClientBase[T]) checkErr(ctx context.Context, err error) (needRetry, nee
 		log.Warn("call received grpc error", zap.Error(err))
 		if funcutil.IsGrpcErr(err, codes.Canceled, codes.DeadlineExceeded) {
 			// canceled or deadline exceeded
-			return true, c.needResetCancel(), err
+			return true, c.needResetCancel(), merr.WrapErrServiceDisconnected(err)
 		}
 
 		if funcutil.IsGrpcErr(err, codes.Unimplemented) {

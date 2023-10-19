@@ -18,7 +18,6 @@ package merr
 
 import (
 	"github.com/cockroachdb/errors"
-	"github.com/samber/lo"
 )
 
 const (
@@ -43,6 +42,7 @@ var (
 	ErrServiceRateLimit            = newMilvusError("rate limit exceeded", 8, true)
 	ErrServiceForceDeny            = newMilvusError("force deny", 9, false)
 	ErrServiceUnimplemented        = newMilvusError("service unimplemented", 10, false)
+	ErrServiceDisconnected         = newMilvusError("service disconnected", 11, true) // retry with reconnect
 
 	// Collection related
 	ErrCollectionNotFound         = newMilvusError("collection not found", 100, false)
@@ -163,48 +163,10 @@ func (e milvusError) Is(err error) bool {
 	return false
 }
 
-type multiErrors struct {
-	errs []error
-}
-
-func (e multiErrors) Unwrap() error {
-	if len(e.errs) <= 1 {
-		return nil
-	}
-	// To make merr work for multi errors,
-	// we need cause of multi errors, which defined as the last error
-	if len(e.errs) == 2 {
-		return e.errs[1]
-	}
-
-	return multiErrors{
-		errs: e.errs[1:],
-	}
-}
-
-func (e multiErrors) Error() string {
-	final := e.errs[0]
-	for i := 1; i < len(e.errs); i++ {
-		final = errors.Wrap(e.errs[i], final.Error())
-	}
-	return final.Error()
-}
-
-func (e multiErrors) Is(err error) bool {
-	for _, item := range e.errs {
-		if errors.Is(item, err) {
-			return true
-		}
-	}
-	return false
-}
-
 func Combine(errs ...error) error {
-	errs = lo.Filter(errs, func(err error, _ int) bool { return err != nil })
-	if len(errs) == 0 {
-		return nil
+	var err error
+	for _, e := range errs {
+		err = errors.CombineErrors(err, e)
 	}
-	return multiErrors{
-		errs,
-	}
+	return err
 }

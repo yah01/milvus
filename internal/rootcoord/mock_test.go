@@ -46,7 +46,6 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/metricsinfo"
 	"github.com/milvus-io/milvus/pkg/util/paramtable"
-	"github.com/milvus-io/milvus/pkg/util/retry"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 )
 
@@ -575,7 +574,7 @@ func withUnhealthyQueryCoord() Opt {
 		&milvuspb.ComponentStates{
 			State:  &milvuspb.ComponentInfo{StateCode: commonpb.StateCode_Abnormal},
 			Status: merr.Status(err),
-		}, retry.Unrecoverable(errors.New("error mock GetComponentStates")),
+		}, errors.New("error mock GetComponentStates"),
 	)
 	return withQueryCoord(qc)
 }
@@ -694,7 +693,7 @@ func withUnhealthyDataCoord() Opt {
 		return &milvuspb.ComponentStates{
 			State:  &milvuspb.ComponentInfo{StateCode: commonpb.StateCode_Abnormal},
 			Status: merr.Status(err),
-		}, retry.Unrecoverable(errors.New("error mock GetComponentStates"))
+		}, errors.New("error mock GetComponentStates")
 	}
 	return withDataCoord(dc)
 }

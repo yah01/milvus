@@ -555,7 +555,7 @@ func (s *Server) initMeta(chunkManager storage.ChunkManager) error {
 	} else if metaType == util.MetaStoreTypeEtcd {
 		s.kv = etcdkv.NewEtcdKV(s.etcdCli, Params.EtcdCfg.MetaRootPath.GetValue())
 	} else {
-		return retry.Unrecoverable(fmt.Errorf("not supported meta store: %s", metaType))
+		return fmt.Errorf("not supported meta store: %s", metaType)
 	}
 	log.Info("data coordinator successfully connected to metadata store", zap.String("metaType", metaType))
 

@@ -89,22 +89,6 @@ func TestAllError(t *testing.T) {
 	t.Log(err)
 }
 
-func TestUnRecoveryError(t *testing.T) {
-	attempts := 0
-	ctx := context.Background()
-
-	mockErr := errors.New("some error")
-	testFn := func() error {
-		attempts++
-		return Unrecoverable(mockErr)
-	}
-
-	err := Do(ctx, testFn, Attempts(3))
-	assert.Error(t, err)
-	assert.Equal(t, attempts, 1)
-	assert.True(t, errors.Is(err, mockErr))
-}
-
 func TestContextDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -134,14 +118,4 @@ func TestContextCancel(t *testing.T) {
 	assert.Error(t, err)
 	assert.True(t, merr.IsCanceledOrTimeout(err))
 	t.Log(err)
-}
-
-func TestWrap(t *testing.T) {
-	err := merr.WrapErrSegmentNotFound(1, "failed to get Segment")
-	assert.True(t, errors.Is(err, merr.ErrSegmentNotFound))
-	assert.True(t, IsRecoverable(err))
-	err2 := Unrecoverable(err)
-	fmt.Println(err2)
-	assert.True(t, errors.Is(err2, merr.ErrSegmentNotFound))
-	assert.False(t, IsRecoverable(err2))
 }

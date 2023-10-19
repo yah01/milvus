@@ -25,7 +25,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/util/retry"
+	"github.com/milvus-io/milvus/pkg/util/merr"
 )
 
 const (
@@ -63,7 +63,7 @@ func (s *stepStack) Execute(ctx context.Context) *stepStack {
 		_, isConfirmGCStep := todo.(*confirmGCStep)
 		skipLog := isWaitForTsSyncedStep || isConfirmGCStep
 
-		if !retry.IsRecoverable(err) {
+		if !merr.IsRetryableErr(err) {
 			if !skipLog {
 				log.Warn("failed to execute step, not able to reschedule", zap.Error(err), zap.String("step", todo.Desc()))
 			}
