@@ -388,18 +388,11 @@ func (loader *segmentLoader) requestResource(ctx context.Context, infos ...*quer
 		}
 	}
 
-	for ; concurrencyLevel > 1; concurrencyLevel /= 2 {
-		_, _, err := loader.checkSegmentSize(ctx, infos, concurrencyLevel)
-		if err == nil {
-			break
-		}
-	}
-
-	mu, du, err := loader.checkSegmentSize(ctx, infos, concurrencyLevel)
-	if err != nil {
-		log.Warn("no sufficient resource to load segments", zap.Error(err))
-		return resource, 0, err
-	}
+	mu, du, _ := loader.checkSegmentSize(ctx, infos, concurrencyLevel)
+	// if err != nil {
+	// 	log.Warn("no sufficient resource to load segments", zap.Error(err))
+	// 	return resource, 0, err
+	// }
 
 	resource.MemorySize += mu
 	resource.DiskSize += du
@@ -1001,34 +994,30 @@ func (loader *segmentLoader) checkSegmentSize(ctx context.Context, segmentLoadIn
 	)
 
 	if !mmapEnabled && predictMemUsage > uint64(float64(totalMem)*paramtable.Get().QueryNodeCfg.OverloadedMemoryThresholdPercentage.GetAsFloat()) {
-		return 0, 0, fmt.Errorf("load segment failed, OOM if load, maxSegmentSize = %v MB, concurrency = %d, memUsage = %v MB, predictMemUsage = %v MB, totalMem = %v MB thresholdFactor = %f",
+		err = fmt.Errorf("load segment failed, OOM if load, maxSegmentSize = %v MB, concurrency = %d, memUsage = %v MB, predictMemUsage = %v MB, totalMem = %v MB thresholdFactor = %f",
 			toMB(maxSegmentSize),
 			concurrency,
 			toMB(memUsage),
 			toMB(predictMemUsage),
 			toMB(totalMem),
 			paramtable.Get().QueryNodeCfg.OverloadedMemoryThresholdPercentage.GetAsFloat())
-	}
-
-	if mmapEnabled && memUsage > uint64(float64(totalMem)*paramtable.Get().QueryNodeCfg.OverloadedMemoryThresholdPercentage.GetAsFloat()) {
-		return 0, 0, fmt.Errorf("load segment failed, OOM if load, maxSegmentSize = %v MB, concurrency = %d, memUsage = %v MB, predictMemUsage = %v MB, totalMem = %v MB thresholdFactor = %f",
+	} else if mmapEnabled && memUsage > uint64(float64(totalMem)*paramtable.Get().QueryNodeCfg.OverloadedMemoryThresholdPercentage.GetAsFloat()) {
+		err = fmt.Errorf("load segment failed, OOM if load, maxSegmentSize = %v MB, concurrency = %d, memUsage = %v MB, predictMemUsage = %v MB, totalMem = %v MB thresholdFactor = %f",
 			toMB(maxSegmentSize),
 			concurrency,
 			toMB(memUsage),
 			toMB(predictMemUsage),
 			toMB(totalMem),
 			paramtable.Get().QueryNodeCfg.OverloadedMemoryThresholdPercentage.GetAsFloat())
-	}
-
-	if predictDiskUsage > uint64(float64(paramtable.Get().QueryNodeCfg.DiskCapacityLimit.GetAsInt64())*paramtable.Get().QueryNodeCfg.MaxDiskUsagePercentage.GetAsFloat()) {
-		return 0, 0, fmt.Errorf("load segment failed, disk space is not enough, diskUsage = %v MB, predictDiskUsage = %v MB, totalDisk = %v MB, thresholdFactor = %f",
+	} else if predictDiskUsage > uint64(float64(paramtable.Get().QueryNodeCfg.DiskCapacityLimit.GetAsInt64())*paramtable.Get().QueryNodeCfg.MaxDiskUsagePercentage.GetAsFloat()) {
+		err = fmt.Errorf("load segment failed, disk space is not enough, diskUsage = %v MB, predictDiskUsage = %v MB, totalDisk = %v MB, thresholdFactor = %f",
 			toMB(diskUsage),
 			toMB(predictDiskUsage),
 			toMB(uint64(paramtable.Get().QueryNodeCfg.DiskCapacityLimit.GetAsInt64())),
 			paramtable.Get().QueryNodeCfg.MaxDiskUsagePercentage.GetAsFloat())
 	}
 
-	return predictMemUsage - memUsage, predictDiskUsage - diskUsage, nil
+	return predictMemUsage - memUsage, predictDiskUsage - diskUsage, err
 }
 
 func (loader *segmentLoader) getFieldType(collectionID, fieldID int64) (schemapb.DataType, error) {

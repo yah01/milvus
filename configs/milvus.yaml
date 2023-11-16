@@ -547,7 +547,7 @@ common:
 #   4. DQL result rate protection;
 # If necessary, you can also manually force to deny RW requests.
 quotaAndLimits:
-  enabled: true # `true` to enable quota and limits, `false` to disable.
+  enabled: false # `true` to enable quota and limits, `false` to disable.
   limits:
     maxCollectionNum: 65536
     maxCollectionNumPerDB: 65536
