@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <numeric>
 #include <utility>
 #include <vector>
 #include <string>
@@ -51,7 +52,31 @@ class ScalarIndexSort : public ScalarIndex<T> {
     }
 
     void
-    Build(size_t n, const T* values) override;
+    Build(std::vector<T>&& values) override {
+        if (is_built_)
+            return;
+        if (values.empty()) {
+            throw SegcoreError(DataIsEmpty,
+                               "ScalarIndexSort cannot build null values");
+        }
+        offsets_.resize(values.size());
+        std::iota(offsets_.begin(), offsets_.end(), 0);
+        std::sort(
+            offsets_.begin(), offsets_.end(), [&](const int i, const int j) {
+                return values[i] < values[j];
+            });
+        // in-place shuffle by permutation
+        for (int i = 0; i < offsets_.size(); i++) {
+            int j = i;
+            while (i != offsets_[j]) {
+                std::swap(values[j], values[offsets_[j]]);
+                j = offsets_[j];
+            }
+        }
+        data_ = std::move(values);
+
+        is_built_ = true;
+    }
 
     void
     Build(const Config& config = {}) override;
@@ -103,8 +128,8 @@ class ScalarIndexSort : public ScalarIndex<T> {
  private:
     bool is_built_;
     Config config_;
-    std::vector<int32_t> idx_to_offsets_;  // used to retrieve.
-    std::vector<IndexStructure<T>> data_;
+    std::vector<int32_t> offsets_;  // used to retrieve.
+    std::vector<T> data_;
     std::shared_ptr<storage::MemFileManagerImpl> file_manager_;
 };
 

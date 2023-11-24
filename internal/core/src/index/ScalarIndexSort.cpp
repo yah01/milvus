@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <pb/schema.pb.h>
 #include <vector>
@@ -62,44 +63,17 @@ ScalarIndexSort<T>::Build(const Config& config) {
                            "ScalarIndexSort cannot build null values!");
     }
 
-    data_.reserve(total_num_rows);
-    int64_t offset = 0;
+    std::vector<T> values;
+    values.reserve(total_num_rows);
     for (auto data : field_datas) {
         auto slice_num = data->get_num_rows();
         for (size_t i = 0; i < slice_num; ++i) {
             auto value = reinterpret_cast<const T*>(data->RawValue(i));
-            data_.emplace_back(IndexStructure(*value, offset));
-            offset++;
+            values.emplace_back(*value);
         }
     }
 
-    std::sort(data_.begin(), data_.end());
-    idx_to_offsets_.resize(total_num_rows);
-    for (size_t i = 0; i < total_num_rows; ++i) {
-        idx_to_offsets_[data_[i].idx_] = i;
-    }
-    is_built_ = true;
-}
-
-template <typename T>
-void
-ScalarIndexSort<T>::Build(size_t n, const T* values) {
-    if (is_built_)
-        return;
-    if (n == 0) {
-        throw SegcoreError(DataIsEmpty,
-                           "ScalarIndexSort cannot build null values!");
-    }
-    data_.reserve(n);
-    idx_to_offsets_.resize(n);
-    T* p = const_cast<T*>(values);
-    for (size_t i = 0; i < n; ++i) {
-        data_.emplace_back(IndexStructure(*p++, i));
-    }
-    std::sort(data_.begin(), data_.end());
-    for (size_t i = 0; i < data_.size(); ++i) {
-        idx_to_offsets_[data_[i].idx_] = i;
-    }
+    Build(std::move(values));
     is_built_ = true;
 }
 
@@ -150,10 +124,10 @@ ScalarIndexSort<T>::LoadWithoutAssemble(const BinarySet& index_binary,
 
     auto index_data = index_binary.GetByName("index_data");
     data_.resize(index_size);
-    idx_to_offsets_.resize(index_size);
+    offsets_.resize(index_size);
     memcpy(data_.data(), index_data->data.get(), (size_t)index_data->size);
     for (size_t i = 0; i < data_.size(); ++i) {
-        idx_to_offsets_[data_[i].idx_] = i;
+        offsets_[data_[i].idx_] = i;
     }
     is_built_ = true;
 }
@@ -308,10 +282,10 @@ ScalarIndexSort<T>::Range(T lower_bound_value,
 template <typename T>
 T
 ScalarIndexSort<T>::Reverse_Lookup(size_t idx) const {
-    AssertInfo(idx < idx_to_offsets_.size(), "out of range of total count");
+    AssertInfo(idx < offsets_.size(), "out of range of total count");
     AssertInfo(is_built_, "index has not been built");
 
-    auto offset = idx_to_offsets_[idx];
+    auto offset = offsets_[idx];
     return data_[offset].a_;
 }
 

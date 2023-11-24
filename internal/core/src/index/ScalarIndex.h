@@ -45,7 +45,7 @@ class ScalarIndex : public IndexBase {
 
  public:
     virtual void
-    Build(size_t n, const T* values) = 0;
+    Build(std::vector<T>&& values) = 0;
 
     virtual const TargetBitmap
     In(size_t n, const T* values) = 0;
