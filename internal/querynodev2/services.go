@@ -46,6 +46,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/common"
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/metrics"
+	"github.com/milvus-io/milvus/pkg/tracer"
 	"github.com/milvus-io/milvus/pkg/util/commonpbutil"
 	"github.com/milvus-io/milvus/pkg/util/funcutil"
 	"github.com/milvus-io/milvus/pkg/util/merr"
@@ -695,7 +696,7 @@ func (node *QueryNode) SearchSegments(ctx context.Context, req *querypb.SearchRe
 	log.Debug("start to search segments on worker",
 		zap.Int64s("segmentIDs", req.GetSegmentIDs()),
 	)
-	searchCtx, cancel := context.WithCancel(ctx)
+	searchCtx, cancel := tracer.WithLogCancel(ctx)
 	defer cancel()
 
 	tr := timerecord.NewTimeRecorder("searchSegments")
@@ -882,7 +883,7 @@ func (node *QueryNode) QuerySegments(ctx context.Context, req *querypb.QueryRequ
 		zap.Int64s("segmentIDs", req.GetSegmentIDs()),
 	)
 	// add cancel when error occurs
-	queryCtx, cancel := context.WithCancel(ctx)
+	queryCtx, cancel := tracer.WithLogCancel(ctx)
 	defer cancel()
 
 	tr := timerecord.NewTimeRecorder("querySegments")

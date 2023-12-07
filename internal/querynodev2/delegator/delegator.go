@@ -43,6 +43,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/metrics"
 	"github.com/milvus-io/milvus/pkg/mq/msgstream"
+	"github.com/milvus-io/milvus/pkg/tracer"
 	"github.com/milvus-io/milvus/pkg/util/conc"
 	"github.com/milvus-io/milvus/pkg/util/funcutil"
 	"github.com/milvus-io/milvus/pkg/util/lifetime"
@@ -498,7 +499,7 @@ func organizeSubTask[T any](ctx context.Context, req T, sealed []SnapshotItem, g
 func executeSubTasks[T any, R interface {
 	GetStatus() *commonpb.Status
 }](ctx context.Context, tasks []subTask[T], execute func(context.Context, T, cluster.Worker) (R, error), taskType string, log *log.MLogger) ([]R, error) {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := tracer.WithLogCancel(ctx)
 	defer cancel()
 
 	var wg sync.WaitGroup

@@ -35,6 +35,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/streamrpc"
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/metrics"
+	"github.com/milvus-io/milvus/pkg/tracer"
 	"github.com/milvus-io/milvus/pkg/util/funcutil"
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/paramtable"
@@ -197,7 +198,7 @@ func (node *QueryNode) queryChannel(ctx context.Context, req *querypb.QueryReque
 		zap.Int64s("segmentIDs", req.GetSegmentIDs()),
 	)
 	// add cancel when error occurs
-	queryCtx, cancel := context.WithCancel(ctx)
+	queryCtx, cancel := tracer.WithLogCancel(ctx)
 	defer cancel()
 
 	// From Proxy
@@ -273,7 +274,7 @@ func (node *QueryNode) queryChannelStream(ctx context.Context, req *querypb.Quer
 	)
 
 	// add cancel when error occurs
-	queryCtx, cancel := context.WithCancel(ctx)
+	queryCtx, cancel := tracer.WithLogCancel(ctx)
 	defer cancel()
 
 	// From Proxy
@@ -356,7 +357,7 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 		zap.Bool("fromShardLeader", req.GetFromShardLeader()),
 		zap.Int64s("segmentIDs", req.GetSegmentIDs()),
 	)
-	searchCtx, cancel := context.WithCancel(ctx)
+	searchCtx, cancel := tracer.WithLogCancel(ctx)
 	defer cancel()
 
 	// From Proxy

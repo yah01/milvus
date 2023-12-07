@@ -64,6 +64,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/metrics"
 	"github.com/milvus-io/milvus/pkg/mq/msgdispatcher"
+	"github.com/milvus-io/milvus/pkg/tracer"
 	"github.com/milvus-io/milvus/pkg/util/gc"
 	"github.com/milvus-io/milvus/pkg/util/hardware"
 	"github.com/milvus-io/milvus/pkg/util/lifetime"
@@ -133,7 +134,7 @@ type QueryNode struct {
 
 // NewQueryNode will return a QueryNode with abnormal state.
 func NewQueryNode(ctx context.Context, factory dependency.Factory) *QueryNode {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := tracer.WithLogCancel(ctx)
 	node := &QueryNode{
 		ctx:      ctx,
 		cancel:   cancel,
