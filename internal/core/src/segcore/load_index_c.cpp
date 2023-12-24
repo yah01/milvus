@@ -217,6 +217,14 @@ AppendIndexV2(CLoadIndexInfo c_load_index_info) {
         index_info.field_type = load_index_info->field_type;
         index_info.index_engine_version = engine_version;
 
+        LOG_INFO(
+            "[collection={}][segment={}][field={}] load index "
+            "{}",
+            load_index_info->collection_id,
+            load_index_info->segment_id,
+            load_index_info->field_id,
+            load_index_info->index_id);
+
         // get index type
         AssertInfo(index_params.find("index_type") != index_params.end(),
                    "index type is empty");
@@ -265,6 +273,14 @@ AppendIndexV2(CLoadIndexInfo c_load_index_info) {
         }
 
         load_index_info->index->Load(config);
+
+        LOG_INFO(
+            "[collection={}][segment={}][field={}] load index "
+            "{} done",
+            load_index_info->collection_id,
+            load_index_info->segment_id,
+            load_index_info->field_id,
+            load_index_info->index_id);
         auto status = CStatus();
         status.error_code = milvus::Success;
         status.error_msg = "";

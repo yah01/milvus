@@ -81,6 +81,17 @@
 #define LOG_SERVER_ERROR_ LOG(ERROR) << SERVER_MODULE_FUNCTION
 #define LOG_SERVER_FATAL_ LOG(FATAL) << SERVER_MODULE_FUNCTION
 
+#define LOG_DEBUG(args...) \
+    VLOG(GLOG_DEBUG) << SERVER_MODULE_FUNCTION << fmt::format(args)
+#define LOG_INFO(args...) \
+    LOG(INFO) << SERVER_MODULE_FUNCTION << fmt::format(args)
+#define LOG_WARN(args...) \
+    LOG(WARNING) << SERVER_MODULE_FUNCTION << fmt::format(args)
+#define LOG_ERROR(args...) \
+    LOG(ERROR) << SERVER_MODULE_FUNCTION << fmt::format(args)
+#define LOG_FATAL(args...) \
+    LOG(FATAL) << SERVER_MODULE_FUNCTION << fmt::format(args)
+
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 std::string

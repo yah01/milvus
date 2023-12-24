@@ -183,8 +183,16 @@ SegmentGrowingImpl::LoadFieldData(const LoadFieldDataInfo& infos) {
         auto channel = std::make_shared<storage::FieldDataChannel>();
         auto& pool =
             ThreadPools::GetThreadPool(milvus::ThreadPoolPriority::MIDDLE);
+
+        LOG_INFO("segment {} loads field {} with num_rows {}",
+                 this->get_segment_id(),
+                 field_id.get(),
+                 num_rows);
         auto load_future =
             pool.Submit(LoadFieldDatasFromRemote, insert_files, channel);
+        LOG_INFO("segment {} submits load field {} task to thread pool",
+                 this->get_segment_id(),
+                 field_id.get());
         auto field_data = CollectFieldDataChannel(channel);
         if (field_id == TimestampFieldID) {
             // step 2: sort timestamp
@@ -228,6 +236,10 @@ SegmentGrowingImpl::LoadFieldData(const LoadFieldDataInfo& infos) {
                 num_rows,
                 storage::GetByteSizeOfFieldDatas(field_data));
         }
+
+        LOG_INFO("segment {} loads field {} done",
+                 this->get_segment_id(),
+                 field_id.get());
     }
 
     // step 5: update small indexes
