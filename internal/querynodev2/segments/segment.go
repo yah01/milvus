@@ -113,10 +113,6 @@ func (s *baseSegment) Type() SegmentType {
 	return s.typ
 }
 
-func (s *baseSegment) Level() datapb.SegmentLevel {
-	return datapb.SegmentLevel_Legacy
-}
-
 func (s *baseSegment) StartPosition() *msgpb.MsgPosition {
 	return s.startPosition
 }
@@ -223,6 +219,10 @@ func NewSegment(ctx context.Context,
 
 func (s *LocalSegment) isValid() bool {
 	return s.ptr != nil
+}
+
+func (s *LocalSegment) Level() datapb.SegmentLevel {
+	return datapb.SegmentLevel_L1
 }
 
 // RLock acquires the `ptrLock` and returns true if the pointer is valid
