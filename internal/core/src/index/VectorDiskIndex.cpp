@@ -96,9 +96,8 @@ VectorDiskAnnIndex<T>::Load(milvus::tracer::TraceContext ctx,
     if (stat != knowhere::Status::success)
         PanicInfo(ErrorCode::UnexpectedError,
                   "failed to Deserialize index, " + KnowhereStatusString(stat));
-    span_load_engine->End();
-
     SetDim(index_.Dim());
+    span_load_engine->End();
 }
 
 template <typename T>

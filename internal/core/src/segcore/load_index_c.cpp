@@ -272,6 +272,7 @@ AppendIndexV2(CTraceContext c_trace, CLoadIndexInfo c_load_index_info) {
         }
 
         load_index_info->index->Load(ctx, config);
+        span->End();
         auto status = CStatus();
         status.error_code = milvus::Success;
         status.error_msg = "";

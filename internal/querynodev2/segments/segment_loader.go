@@ -589,10 +589,19 @@ func (loader *segmentLoader) loadSegment(ctx context.Context,
 		log.Info("load fields...",
 			zap.Int64s("indexedFields", lo.Keys(indexedFieldInfos)),
 		)
-		if err := loader.loadFieldsIndex(ctx, collection.Schema(), segment, loadInfo.GetNumOfRows(), indexedFieldInfos); err != nil {
+
+		wg := errgroup.Group{}
+		wg.Go(func() error {
+			return loader.loadFieldsIndex(ctx, collection.Schema(), segment, loadInfo.GetNumOfRows(), indexedFieldInfos)
+		})
+		wg.Go(func() error {
+			return loader.loadSealedSegmentFields(ctx, segment, fieldBinlogs, loadInfo.GetNumOfRows())
+		})
+		if err := wg.Wait(); err != nil {
 			return err
 		}
-		if err := loader.loadSealedSegmentFields(ctx, segment, fieldBinlogs, loadInfo.GetNumOfRows()); err != nil {
+
+		if err := segment.AddFieldDataInfo(ctx, loadInfo.GetNumOfRows(), loadInfo.GetBinlogPaths()); err != nil {
 			return err
 		}
 		// https://github.com/milvus-io/milvus/23654
