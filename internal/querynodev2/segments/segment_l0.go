@@ -65,6 +65,9 @@ func NewL0Segment(collection *Collection,
 		baseSegment: newBaseSegment(segmentID, partitionID, collectionID, shard, segmentType, datapb.SegmentLevel_L0, version, startPosition),
 	}
 
+	// level 0 segments are always in memory
+	segment.loadStatus = LoadStatusInMemory
+
 	return segment, nil
 }
 

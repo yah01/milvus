@@ -85,6 +85,7 @@ type baseSegment struct {
 	typ            SegmentType
 	level          datapb.SegmentLevel
 	version        *atomic.Int64
+	loadStatus     LoadStatus
 	startPosition  *msgpb.MsgPosition // for growing segment release
 	bloomFilterSet *pkoracle.BloomFilterSet
 }
@@ -98,6 +99,7 @@ func newBaseSegment(id, partitionID, collectionID int64, shard string, typ Segme
 		typ:            typ,
 		level:          level,
 		version:        atomic.NewInt64(version),
+		loadStatus:     LoadStatusMeta,
 		startPosition:  startPosition,
 		bloomFilterSet: pkoracle.NewBloomFilterSet(id, partitionID, typ),
 	}
@@ -140,6 +142,10 @@ func (s *baseSegment) CASVersion(old, newVersion int64) bool {
 	return s.version.CompareAndSwap(old, newVersion)
 }
 
+func (s *baseSegment) LoadStatus() LoadStatus {
+	return s.loadStatus
+}
+
 func (s *baseSegment) UpdateBloomFilter(pks []storage.PrimaryKey) {
 	s.bloomFilterSet.UpdateBloomFilter(pks)
 }
@@ -149,6 +155,11 @@ func (s *baseSegment) UpdateBloomFilter(pks []storage.PrimaryKey) {
 // may returns true even the PK doesn't exist actually
 func (s *baseSegment) MayPkExist(pk storage.PrimaryKey) bool {
 	return s.bloomFilterSet.MayPkExist(pk)
+}
+
+type FieldInfo struct {
+	datapb.FieldBinlog
+	RowCount int64
 }
 
 var _ Segment = (*LocalSegment)(nil)
@@ -165,6 +176,7 @@ type LocalSegment struct {
 	insertCount *atomic.Int64
 
 	lastDeltaTimestamp *atomic.Uint64
+	fields             *typeutil.ConcurrentMap[int64, *FieldInfo]
 	fieldIndexes       *typeutil.ConcurrentMap[int64, *IndexedFieldInfo]
 	space              *milvus_storage.Space
 }
@@ -774,9 +786,42 @@ func (s *LocalSegment) LoadMultiFieldData(ctx context.Context, rowCount int64, f
 	return nil
 }
 
-func (s *LocalSegment) LoadFieldData(ctx context.Context, fieldID int64, rowCount int64, field *datapb.FieldBinlog, mmapEnabled bool) error {
+type loadOptions struct {
+	LoadStatus LoadStatus
+}
+
+func newLoadOptions() *loadOptions {
+	return &loadOptions{
+		LoadStatus: LoadStatusInMemory,
+	}
+}
+
+type loadOption func(*loadOptions)
+
+func WithLoadStatus(loadStatus LoadStatus) loadOption {
+	return func(options *loadOptions) {
+		options.LoadStatus = loadStatus
+	}
+}
+
+func (s *LocalSegment) LoadFieldData(ctx context.Context, fieldID int64, rowCount int64, field *datapb.FieldBinlog, opts ...loadOption) error {
+	options := newLoadOptions()
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	s.fields.Insert(fieldID, &FieldInfo{
+		FieldBinlog: *field,
+		RowCount:    rowCount,
+	})
+
+	if options.LoadStatus == LoadStatusMeta {
+		return nil
+	}
+
 	s.ptrLock.RLock()
 	defer s.ptrLock.RUnlock()
+
 	ctx, sp := otel.Tracer(typeutil.QueryNodeRole).Start(ctx, fmt.Sprintf("LoadFieldData-%d-%d", s.segmentID, fieldID))
 	defer sp.End()
 
@@ -813,6 +858,7 @@ func (s *LocalSegment) LoadFieldData(ctx context.Context, fieldID int64, rowCoun
 		}
 	}
 
+	mmapEnabled := options.LoadStatus == LoadStatusMapped
 	loadFieldDataInfo.appendMMapDirPath(paramtable.Get().QueryNodeCfg.MmapDirPath.GetValue())
 	loadFieldDataInfo.enableMmap(fieldID, mmapEnabled)
 
@@ -1069,7 +1115,19 @@ func (s *LocalSegment) LoadDeltaData(ctx context.Context, deltaData *storage.Del
 	return nil
 }
 
-func (s *LocalSegment) LoadIndex(ctx context.Context, indexInfo *querypb.FieldIndexInfo, fieldType schemapb.DataType) error {
+func (s *LocalSegment) LoadIndex(ctx context.Context, indexInfo *querypb.FieldIndexInfo, fieldType schemapb.DataType, opts ...loadOption) error {
+	options := newLoadOptions()
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	old := s.GetIndex(indexInfo.GetFieldID())
+	// the index loaded
+	if old != nil && old.IndexInfo.GetIndexID() == indexInfo.GetIndexID() {
+		log.Warn("index already loaded")
+		return nil
+	}
+
 	ctx, sp := otel.Tracer(typeutil.QueryNodeRole).Start(ctx, fmt.Sprintf("LoadIndex-%d-%d", s.segmentID, indexInfo.GetFieldID()))
 	defer sp.End()
 
@@ -1080,13 +1138,6 @@ func (s *LocalSegment) LoadIndex(ctx context.Context, indexInfo *querypb.FieldIn
 		zap.Int64("fieldID", indexInfo.GetFieldID()),
 		zap.Int64("indexID", indexInfo.GetIndexID()),
 	)
-
-	old := s.GetIndex(indexInfo.GetFieldID())
-	// the index loaded
-	if old != nil && old.IndexInfo.GetIndexID() == indexInfo.GetIndexID() {
-		log.Warn("index already loaded")
-		return nil
-	}
 
 	loadIndexInfo, err := newLoadIndexInfo(ctx)
 	if err != nil {
@@ -1114,11 +1165,6 @@ func (s *LocalSegment) LoadIndex(ctx context.Context, indexInfo *querypb.FieldIn
 	if s.Type() != SegmentTypeSealed {
 		errMsg := fmt.Sprintln("updateSegmentIndex failed, illegal segment type ", s.typ, "segmentID = ", s.ID())
 		return errors.New(errMsg)
-	}
-
-	err = s.UpdateIndexInfo(ctx, indexInfo, loadIndexInfo)
-	if err != nil {
-		return err
 	}
 
 	if !typeutil.IsVectorType(fieldType) || s.HasRawData(indexInfo.GetFieldID()) {

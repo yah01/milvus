@@ -26,6 +26,14 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 )
 
+type LoadStatus string
+
+const (
+	LoadStatusMeta     LoadStatus = "meta"
+	LoadStatusMapped              = "mapped"
+	LoadStatusInMemory            = "in_memory"
+)
+
 type Segment interface {
 	// Properties
 	ID() int64
@@ -37,6 +45,7 @@ type Segment interface {
 	StartPosition() *msgpb.MsgPosition
 	Type() SegmentType
 	Level() datapb.SegmentLevel
+	LoadStatus() LoadStatus
 	RLock() error
 	RUnlock()
 
