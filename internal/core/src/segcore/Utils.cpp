@@ -707,8 +707,26 @@ LoadFieldDatasFromRemote(const std::vector<std::string>& remote_files,
             auto future = pool.Submit([&]() {
                 auto fileSize = rcm->Size(file);
                 auto buf = std::shared_ptr<uint8_t[]>(new uint8_t[fileSize]);
+                auto begin = std::chrono::high_resolution_clock::now();
                 rcm->Read(file, buf.get(), fileSize);
+                auto read_end = std::chrono::high_resolution_clock::now();
                 auto result = storage::DeserializeFileData(buf, fileSize);
+                auto end = std::chrono::high_resolution_clock::now();
+
+                LOG_SEGCORE_WARNING_
+                    << "read file " << file << " size " << fileSize
+                    << " bytes, deserialize " << result->GetNumRows()
+                    << " rows, "
+                    << "read time "
+                    << std::chrono::duration_cast<std::chrono::milliseconds>(
+                           read_end - begin)
+                           .count()
+                    << " ms, deserialize time "
+                    << std::chrono::duration_cast<std::chrono::milliseconds>(
+                           end - read_end)
+                           .count()
+                    << " ms";
+
                 return result->GetFieldData();
             });
             futures.emplace_back(std::move(future));

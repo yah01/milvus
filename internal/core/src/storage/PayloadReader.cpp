@@ -15,6 +15,7 @@
 // limitations under the License.
 
 #include "storage/PayloadReader.h"
+#include <chrono>
 #include "common/EasyAssert.h"
 #include "storage/Util.h"
 #include "parquet/column_reader.h"
@@ -34,6 +35,8 @@ PayloadReader::PayloadReader(const uint8_t* data,
 
 void
 PayloadReader::init(std::shared_ptr<arrow::io::BufferReader> input) {
+    auto begin = std::chrono::high_resolution_clock::now();
+
     arrow::MemoryPool* pool = arrow::default_memory_pool();
 
     // Configure general Parquet reader settings
@@ -81,7 +84,10 @@ PayloadReader::init(std::shared_ptr<arrow::io::BufferReader> input) {
         field_data_->FillFieldData(array);
     }
     AssertInfo(field_data_->IsFull(), "field data hasn't been filled done");
-    // LOG_SEGCORE_INFO_ << "Peak arrow memory pool size " << pool->max_memory();
+    
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin);
+    LOG_SEGCORE_INFO_ << "PayloadReader::init() cost " << duration.count() << " ms";
 }
 
 }  // namespace milvus::storage
